@@ -1,7 +1,7 @@
 import { useState, useCallback } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, Image,
-  StyleSheet, ScrollView, ActivityIndicator, Alert, Platform
+  StyleSheet, ScrollView, ActivityIndicator, Alert, Platform, Modal
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useFocusEffect } from 'expo-router';
@@ -53,11 +53,15 @@ export default function SettingsScreen() {
     supabase.from('profiles').update({ language: code }).eq('id', user?.id);
   };
 
-  const handleLogout = () => {
-    Alert.alert('Logout', 'Are you sure you want to logout?', [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Logout', style: 'destructive', onPress: signOut },
-    ]);
+  const [showLogoutModal, setShowLogoutModal] = useState(false);
+
+  const handleLogout = async () => {
+    setShowLogoutModal(true);
+  };
+
+  const confirmLogout = async () => {
+    setShowLogoutModal(false);
+    await signOut();
   };
 
   const toggleSection = (section: string) => setActiveSection(prev => prev === section ? null : section);
@@ -249,6 +253,38 @@ export default function SettingsScreen() {
         </View>
         <View style={{ height: 40 }} />
       </ScrollView>
+
+      <Modal
+        visible={showLogoutModal}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowLogoutModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalIconWrapper}>
+              <LogOut size={28} color={Colors.error[600]} />
+            </View>
+            <Text style={styles.modalTitle}>Logout</Text>
+            <Text style={styles.modalSubtitle}>Are you sure you want to logout? You will need to sign in again to access your projects.</Text>
+
+            <View style={styles.modalButtons}>
+              <TouchableOpacity
+                style={styles.cancelBtn}
+                onPress={() => setShowLogoutModal(false)}
+              >
+                <Text style={styles.cancelBtnText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.confirmBtn}
+                onPress={confirmLogout}
+              >
+                <Text style={styles.confirmBtnText}>Logout</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -343,4 +379,72 @@ const styles = StyleSheet.create({
   footer: { alignItems: 'center', paddingVertical: 20 },
   footerText: { fontFamily: 'Inter-Regular', fontSize: 12, color: Colors.neutral[400] },
   footerVersion: { fontFamily: 'Inter-Regular', fontSize: 11, color: Colors.neutral[300], marginTop: 2 },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  modalContent: {
+    backgroundColor: '#fff',
+    borderRadius: 24,
+    padding: 24,
+    width: '100%',
+    maxWidth: 340,
+    alignItems: 'center',
+  },
+  modalIconWrapper: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: Colors.error[50],
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  modalTitle: {
+    fontFamily: 'Inter-Bold',
+    fontSize: 20,
+    color: Colors.neutral[900],
+    marginBottom: 8,
+  },
+  modalSubtitle: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 14,
+    color: Colors.neutral[500],
+    textAlign: 'center',
+    lineHeight: 20,
+    marginBottom: 24,
+  },
+  modalButtons: {
+    flexDirection: 'row',
+    gap: 12,
+    width: '100%',
+  },
+  cancelBtn: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: Colors.neutral[200],
+    alignItems: 'center',
+  },
+  cancelBtnText: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 15,
+    color: Colors.neutral[600],
+  },
+  confirmBtn: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 12,
+    backgroundColor: Colors.error[600],
+    alignItems: 'center',
+  },
+  confirmBtnText: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 15,
+    color: '#fff',
+  },
 });
