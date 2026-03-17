@@ -70,44 +70,72 @@ export class WordpressService {
     let synced = 0;
     const client = this.supabase.getClient();
 
-    while (true) {
-      const response = await fetch(
-        `${config.wp_url}/wp-json/wp/v2/media?per_page=100&page=${page}&mime_type=application/pdf`,
-        { headers }
-      );
-
-      if (!response.ok) break;
-      const items: WPMedia[] = await response.json();
-      if (!items.length) break;
-
-      for (const item of items) {
-        const category = this.inferCategory(item.title.rendered, item.slug);
-        const language = this.inferLanguage(item.title.rendered, item.slug);
-
-        await client.from('documents').upsert({
-          title: item.title.rendered,
-          description: item.description.rendered.replace(/<[^>]+>/g, '').trim(),
-          category,
-          file_url: item.source_url,
-          language,
-          tags: [],
-          updated_at: new Date().toISOString(),
-        }, { onConflict: 'file_url', ignoreDuplicates: false });
-
-        synced++;
-      }
-
-      const totalPages = parseInt(response.headers.get('X-WP-TotalPages') || '1');
-      if (page >= totalPages) break;
-      page++;
-    }
-
     await client
       .from('wordpress_sync_config')
-      .update({ last_synced_at: new Date().toISOString() })
+      .update({ last_sync_status: 'syncing', updated_at: new Date().toISOString() })
       .eq('company_id', companyId);
 
-    return { synced, message: `Successfully synced ${synced} documents from WordPress` };
+    try {
+      while (true) {
+        const response = await fetch(
+          `${config.wp_url}/wp-json/wp/v2/media?per_page=100&page=${page}&mime_type=application/pdf`,
+          { headers, signal: AbortSignal.timeout(30000) } // 30s timeout
+        );
+
+        if (!response.ok) {
+          const errorData = await response.text();
+          throw new Error(`WordPress API error (${response.status}): ${errorData.substring(0, 100)}`);
+        }
+
+        const items: WPMedia[] = await response.json();
+        if (!items.length) break;
+
+        for (const item of items) {
+          const category = this.inferCategory(item.title.rendered, item.slug);
+          const language = this.inferLanguage(item.title.rendered, item.slug);
+
+          await client.from('documents').upsert({
+            title: item.title.rendered,
+            description: item.description.rendered.replace(/<[^>]+>/g, '').trim(),
+            category,
+            file_url: item.source_url,
+            language,
+            tags: [],
+            updated_at: new Date().toISOString(),
+          }, { onConflict: 'file_url' });
+
+          synced++;
+        }
+
+        const totalPagesHeader = response.headers.get('X-WP-TotalPages');
+        const totalPages = totalPagesHeader ? parseInt(totalPagesHeader) : 1;
+        if (page >= totalPages) break;
+        page++;
+      }
+
+      await client
+        .from('wordpress_sync_config')
+        .update({ 
+          last_synced_at: new Date().toISOString(),
+          last_sync_status: 'success',
+          last_sync_message: `Successfully synced ${synced} documents`,
+          updated_at: new Date().toISOString()
+        })
+        .eq('company_id', companyId);
+
+      return { synced, message: `Successfully synced ${synced} documents from WordPress` };
+    } catch (error) {
+      await client
+        .from('wordpress_sync_config')
+        .update({ 
+          last_sync_status: 'failed',
+          last_sync_message: error.message,
+          updated_at: new Date().toISOString()
+        })
+        .eq('company_id', companyId);
+      
+      throw new BadRequestException(`Sync failed: ${error.message}`);
+    }
   }
 
   private inferCategory(title: string, slug: string): string {

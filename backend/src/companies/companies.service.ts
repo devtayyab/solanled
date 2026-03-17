@@ -81,13 +81,38 @@ export class CompaniesService {
       .eq('id', userId)
       .maybeSingle();
 
+    if (!adminProfile?.company_id) throw new BadRequestException('User is not associated with any company');
     if (!['admin', 'superadmin'].includes(adminProfile?.role)) {
       throw new ForbiddenException('Only admins can invite employees');
     }
 
+    // Generate unique token for invitation
+    const token = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+    const expiresAt = new Date();
+    expiresAt.setDate(expiresAt.getDate() + 7); // 7 days expiry
+
+    const { error } = await this.supabaseService
+      .getClient()
+      .from('company_invitations')
+      .insert({
+        company_id: adminProfile.company_id,
+        invited_by: userId,
+        email: email.toLowerCase().trim(),
+        role,
+        token,
+        expires_at: expiresAt.toISOString(),
+      });
+
+    if (error) {
+      if (error.code === '23505') throw new BadRequestException('An invitation for this email already exists');
+      throw new BadRequestException(error.message);
+    }
+
+    // In a real app, you would send an email here
     return {
-      message: `Invitation sent to ${email}`,
-      company_id: adminProfile.company_id,
+      message: `Invitation successfully created for ${email}`,
+      token, // Returning token for testing purposes (in production, only send via email)
+      expires_at: expiresAt,
     };
   }
 }

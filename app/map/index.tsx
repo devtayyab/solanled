@@ -54,11 +54,11 @@ export default function MapViewScreen() {
     if (!profile?.company_id) { setLoading(false); return; }
     supabase
       .from('projects')
-      .select('id, title, status, gps_lat, gps_lng, location_address, installed_at')
+      .select('*')
       .eq('company_id', profile.company_id)
       .not('gps_lat', 'is', null)
       .then(({ data }) => {
-        if (data) setProjects(data);
+        if (data) setProjects(data as Project[]);
         setLoading(false);
       });
   }, [profile?.company_id]));
@@ -76,7 +76,13 @@ export default function MapViewScreen() {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
+        <TouchableOpacity style={styles.backBtn} onPress={() => {
+          if (router.canGoBack()) {
+            router.back();
+          } else {
+            router.replace('/(tabs)');
+          }
+        }}>
           <ArrowLeft size={20} color={Colors.neutral[700]} />
         </TouchableOpacity>
         <View>
@@ -179,6 +185,7 @@ const styles = StyleSheet.create({
   },
   goToProjectsBtnText: { fontFamily: 'Inter-SemiBold', fontSize: 14, color: '#fff' },
   webMapContainer: { flex: 1 },
+  projectList: { flex: 1, padding: 8 },
   nativeMapContainer: { flex: 1, padding: 16 },
   listTitle: { fontFamily: 'Inter-SemiBold', fontSize: 14, color: Colors.neutral[700], padding: 12, paddingBottom: 6 },
   listTitle2: { fontFamily: 'Inter-SemiBold', fontSize: 13, color: Colors.neutral[900] },
