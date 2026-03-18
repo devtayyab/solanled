@@ -8,6 +8,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
 import * as Sharing from 'expo-sharing';
+import * as FileSystem from 'expo-file-system/legacy';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
 import { t } from '../../lib/i18n';
@@ -114,17 +115,53 @@ export default function ProjectDetailScreen() {
   };
 
   const addPhoto = async () => {
-    const result = await ImagePicker.launchCameraAsync({ quality: 0.8 });
-    if (!result.canceled && profile) {
-      const { data } = await supabase.from('project_photos').insert({
+    const result = await ImagePicker.launchCameraAsync({
+      quality: 0.7,
+      allowsEditing: true,
+      aspect: [4, 3],
+    });
+
+    if (result.canceled || !result.assets[0] || !profile) return;
+
+    setLoading(true); // Re-use loading or create a new 'uploading' state if preferred
+    try {
+      const uri = result.assets[0].uri;
+      const fileExt = uri.split('.').pop()?.toLowerCase() || 'jpg';
+      const fileName = `${id}/${profile.id}_${Date.now()}.${fileExt}`;
+      
+      // 1. Upload to Storage
+      const { data: uploadData, error: uploadError } = await supabase.storage
+        .from('project-photos')
+        .upload(fileName, {
+          uri,
+          type: `image/${fileExt === 'jpg' ? 'jpeg' : fileExt}`,
+          name: fileName,
+        } as any);
+
+      if (uploadError) throw uploadError;
+
+      // 2. Get Public URL
+      const { data: { publicUrl } } = supabase.storage
+        .from('project-photos')
+        .getPublicUrl(fileName);
+
+      // 3. Save to Database
+      const { data, error: dbError } = await supabase.from('project_photos').insert({
         project_id: id,
         uploaded_by: profile.id,
-        url: result.assets[0].uri,
+        url: publicUrl,
         caption: '',
       }).select().single();
+
+      if (dbError) throw dbError;
+
       if (data) {
         setProject(prev => prev ? { ...prev, project_photos: [...(prev.project_photos || []), data] } : prev);
       }
+    } catch (e: any) {
+      Alert.alert(t('error'), e.message || 'Failed to upload photo');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -217,9 +254,8 @@ ${(project.project_status_history?.length || 0) > 0 ? `
 </html>`;
 
       const isAvailable = await Sharing.isAvailableAsync();
-      if (isAvailable) {
-        const { FileSystem } = await import('expo-file-system');
-        const fileUri = FileSystem.cacheDirectory + `project_${id}.html`;
+      if (isAvailable && FileSystem.cacheDirectory) {
+        const fileUri = `${FileSystem.cacheDirectory}project_${id}.html`;
         await FileSystem.writeAsStringAsync(fileUri, html);
         await Sharing.shareAsync(fileUri, { mimeType: 'text/html', dialogTitle: `Export ${project.title}` });
       } else {
@@ -266,7 +302,13 @@ ${(project.project_status_history?.length || 0) > 0 ? `
     return (
       <SafeAreaView style={styles.center}>
         <Text style={styles.notFound}>Project not found</Text>
-        <TouchableOpacity onPress={() => router.back()}><Text style={styles.back}>Go back</Text></TouchableOpacity>
+        <TouchableOpacity onPress={() => {
+          if (router.canGoBack()) {
+            router.back();
+          } else {
+            router.replace('/(tabs)');
+          }
+        }}><Text style={styles.back}>Go back</Text></TouchableOpacity>
       </SafeAreaView>
     );
   }
@@ -276,7 +318,13 @@ ${(project.project_status_history?.length || 0) > 0 ? `
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
+        <TouchableOpacity style={styles.backBtn} onPress={() => {
+          if (router.canGoBack()) {
+            router.back();
+          } else {
+            router.replace('/(tabs)');
+          }
+        }}>
           <ArrowLeft size={20} color={Colors.neutral[700]} />
         </TouchableOpacity>
         <Text style={styles.headerTitle} numberOfLines={1}>{project.title}</Text>

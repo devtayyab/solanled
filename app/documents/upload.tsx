@@ -67,7 +67,11 @@ export default function UploadDocumentScreen() {
       });
 
       if (err) throw err;
-      router.back();
+      if (router.canGoBack()) {
+        router.back();
+      } else {
+        router.replace('/(tabs)/documents');
+      }
     } catch (e: any) {
       setError(e.message || 'Failed to upload document');
     } finally {
@@ -79,7 +83,13 @@ export default function UploadDocumentScreen() {
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.header}>
-          <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
+          <TouchableOpacity style={styles.backBtn} onPress={() => {
+            if (router.canGoBack()) {
+              router.back();
+            } else {
+              router.replace('/(tabs)/documents');
+            }
+          }}>
             <ArrowLeft size={20} color={Colors.neutral[700]} />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Upload Document</Text>
@@ -99,7 +109,13 @@ export default function UploadDocumentScreen() {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
+        <TouchableOpacity style={styles.backBtn} onPress={() => {
+          if (router.canGoBack()) {
+            router.back();
+          } else {
+            router.replace('/(tabs)/documents');
+          }
+        }}>
           <ArrowLeft size={20} color={Colors.neutral[700]} />
         </TouchableOpacity>
         <View style={styles.headerIcon}>
@@ -257,7 +273,13 @@ export default function UploadDocumentScreen() {
             )}
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.cancelBtn} onPress={() => router.back()}>
+          <TouchableOpacity style={styles.cancelBtn} onPress={() => {
+            if (router.canGoBack()) {
+              router.back();
+            } else {
+              router.replace('/(tabs)/documents');
+            }
+          }}>
             <Text style={styles.cancelBtnText}>Cancel</Text>
           </TouchableOpacity>
         </View>

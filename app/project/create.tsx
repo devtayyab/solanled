@@ -126,7 +126,13 @@ export default function CreateProjectScreen() {
     <SafeAreaView style={styles.container}>
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <View style={styles.modalHeader}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+          <TouchableOpacity onPress={() => {
+            if (router.canGoBack()) {
+              router.back();
+            } else {
+              router.replace('/(tabs)');
+            }
+          }} style={styles.backBtn}>
             <X size={20} color={Colors.neutral[600]} />
           </TouchableOpacity>
           <Text style={styles.modalTitle}>{t('create_project')}</Text>

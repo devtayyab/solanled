@@ -199,7 +199,13 @@ export default function WordPressSyncScreen() {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
+        <TouchableOpacity style={styles.backBtn} onPress={() => {
+          if (router.canGoBack()) {
+            router.back();
+          } else {
+            router.replace('/(tabs)');
+          }
+        }}>
           <ArrowLeft size={20} color={Colors.neutral[700]} />
         </TouchableOpacity>
         <View style={styles.headerIcon}>

@@ -24,40 +24,83 @@ export default function CompanyProfileScreen() {
   const [phone, setPhone] = useState('');
   const isAdmin = profile?.role === 'admin' || profile?.role === 'superadmin';
 
-  useFocusEffect(useCallback(() => {
-    if (!profile?.company_id) { setLoading(false); return; }
-    Promise.all([
-      supabase.from('companies').select('*').eq('id', profile.company_id).maybeSingle(),
-      supabase.from('profiles').select('id').eq('company_id', profile.company_id),
-      supabase.from('projects').select('id, status').eq('company_id', profile.company_id),
-    ]).then(([companyRes, membersRes, projectsRes]) => {
+  const fetchData = useCallback(async () => {
+    if (!profile?.company_id) {
+      console.log('No company_id found in profile:', profile);
+      setLoading(false);
+      return;
+    }
+
+    try {
+      const [companyRes, membersRes, projectsRes] = await Promise.all([
+        supabase.from('companies').select('*').eq('id', profile.company_id).maybeSingle(),
+        supabase.from('profiles').select('id').eq('company_id', profile.company_id),
+        supabase.from('projects').select('id, status').eq('company_id', profile.company_id),
+      ]);
+
+      if (companyRes.error) console.error('Company fetch error:', companyRes.error);
+      if (membersRes.error) console.error('Members fetch error:', membersRes.error);
+
       if (companyRes.data) {
         const c = companyRes.data;
         setCompany(c);
-        setName(c.name || ''); setAddress(c.address || '');
-        setCountry(c.country || ''); setPhone(c.phone || '');
+        setName(c.name || '');
+        setAddress(c.address || '');
+        setCountry(c.country || '');
+        setPhone(c.phone || '');
+      } else {
+        console.warn('Company row not found for ID:', profile.company_id);
       }
+
       setStats({
         members: membersRes.data?.length || 0,
         projects: projectsRes.data?.length || 0,
         installed: projectsRes.data?.filter(p => p.status === 'installed').length || 0,
       });
+    } catch (err) {
+      console.error('Error fetching company data:', err);
+    } finally {
       setLoading(false);
-    });
-  }, [profile?.company_id]));
+    }
+  }, [profile?.company_id]);
+
+  useFocusEffect(useCallback(() => {
+    fetchData();
+  }, [fetchData]));
 
   const saveCompany = async () => {
-    if (!profile?.company_id || !isAdmin) return;
-    setSaving(true);
-    const { error } = await supabase.from('companies').update({
-      name, address, country, phone,
-      updated_at: new Date().toISOString(),
-    }).eq('id', profile.company_id);
+    if (!profile?.company_id) {
+      Alert.alert('Error', 'No Company ID linked to your profile. Please contact support.');
+      return;
+    }
+    if (!isAdmin) {
+      Alert.alert('Permission Denied', 'Only admins can update company details.');
+      return;
+    }
 
-    if (error) Alert.alert('Error', error.message);
-    else {
+    setSaving(true);
+    console.log('Updating company:', profile.company_id, { name, address, country, phone });
+
+    const { error, data } = await supabase
+      .from('companies')
+      .update({
+        name,
+        address,
+        country,
+        phone,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', profile.company_id)
+      .select();
+
+    if (error) {
+      console.error('Update failed:', error);
+      Alert.alert('Update Failed', error.message);
+    } else {
+      console.log('Update success:', data);
       await refreshProfile();
-      Alert.alert('Saved', 'Company profile updated successfully');
+      fetchData();
+      Alert.alert('Success', 'Company profile updated successfully');
     }
     setSaving(false);
   };
@@ -84,7 +127,13 @@ export default function CompanyProfileScreen() {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
+        <TouchableOpacity style={styles.backBtn} onPress={() => {
+          if (router.canGoBack()) {
+            router.back();
+          } else {
+            router.replace('/(tabs)');
+          }
+        }}>
           <ArrowLeft size={20} color={Colors.neutral[700]} />
         </TouchableOpacity>
         <View style={styles.headerIcon}>
@@ -154,6 +203,14 @@ export default function CompanyProfileScreen() {
             </View>
           </TouchableOpacity>
         </View>
+
+        {!profile?.company_id && (
+          <View style={[styles.readOnlyNote, { backgroundColor: Colors.error[50], marginBottom: 16 }]}>
+            <Text style={[styles.readOnlyText, { color: Colors.error[600] }]}>
+              Account Error: No company is linked to your account.
+            </Text>
+          </View>
+        )}
 
         {!isAdmin && (
           <View style={styles.readOnlyNote}>
