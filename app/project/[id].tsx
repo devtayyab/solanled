@@ -29,7 +29,7 @@ interface Comment {
   profiles?: { full_name: string };
 }
 
-type TabType = 'info' | 'photos' | 'comments' | 'history';
+type TabType = 'info' | 'photos' | 'team' | 'comments' | 'history';
 
 export default function ProjectDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -43,6 +43,9 @@ export default function ProjectDetailScreen() {
   const [commentInput, setCommentInput] = useState('');
   const [sendingComment, setSendingComment] = useState(false);
   const [sharing, setSharing] = useState(false);
+  const [assignedMembers, setAssignedMembers] = useState<any[]>([]);
+  const [companyMembers, setCompanyMembers] = useState<any[]>([]);
+  const [loadingTeam, setLoadingTeam] = useState(false);
 
   const fetchProject = async () => {
     const { data } = await supabase
@@ -63,10 +66,37 @@ export default function ProjectDetailScreen() {
     if (data) setComments(data);
   };
 
+  const fetchTeam = async () => {
+    setLoadingTeam(true);
+    try {
+      // 1. Fetch assigned members
+      const { data: assignments } = await supabase
+        .from('project_assignments')
+        .select('*, profiles(full_name, role)')
+        .eq('project_id', id);
+      setAssignedMembers(assignments || []);
+
+      // 2. Fetch company members if user is admin/signmaker
+      const isManager = profile?.role === 'signmaker' || profile?.role === 'sloan_admin' || profile?.role === 'superadmin' || profile?.role === 'admin';
+      if (isManager && project?.company_id) {
+        const { data: members } = await supabase
+          .from('company_members')
+          .select('*, profiles(full_name, role)')
+          .eq('company_id', project.company_id);
+        setCompanyMembers(members || []);
+      }
+    } catch (e) {
+      console.error('Error fetching team:', e);
+    } finally {
+      setLoadingTeam(false);
+    }
+  };
+
   useEffect(() => { fetchProject(); }, [id]);
 
   useEffect(() => {
     if (activeTab === 'comments') fetchComments();
+    if (activeTab === 'team') fetchTeam();
   }, [activeTab]);
 
   const getStatusLabel = (status: string) => {
@@ -181,6 +211,24 @@ export default function ProjectDetailScreen() {
     if (data) setComments(prev => [...prev, data]);
     setCommentInput('');
     setSendingComment(false);
+  };
+
+  const toggleAssignment = async (userId: string) => {
+    const existing = assignedMembers.find(m => m.user_id === userId);
+    if (existing) {
+      const { error } = await supabase.from('project_assignments').delete().eq('id', existing.id);
+      if (!error) setAssignedMembers(prev => prev.filter(m => m.id !== existing.id));
+    } else {
+      const { data, error } = await supabase.from('project_assignments').insert({
+        project_id: id,
+        user_id: userId,
+        assigned_by: profile?.id,
+        can_view: true,
+        can_upload_photos: true,
+      }).select('*, profiles(full_name, role)').single();
+      if (!error && data) setAssignedMembers(prev => [...prev, data]);
+      else if (error) Alert.alert('Error', error.message);
+    }
   };
 
   const handleShare = async () => {
@@ -338,7 +386,7 @@ ${(project.project_status_history?.length || 0) > 0 ? `
       </View>
 
       <View style={styles.tabs}>
-        {(['info', 'photos', 'comments', 'history'] as const).map(tab => (
+        {(['info', 'photos', 'team', 'comments', 'history'] as const).map(tab => (
           <TouchableOpacity
             key={tab}
             style={[styles.tab, activeTab === tab && styles.tabActive]}
@@ -347,7 +395,8 @@ ${(project.project_status_history?.length || 0) > 0 ? `
             <Text style={[styles.tabText, activeTab === tab && styles.tabTextActive]}>
               {tab === 'info' ? 'Info'
                 : tab === 'photos' ? `Photos (${project.project_photos?.length || 0})`
-                : tab === 'comments' ? `Comments`
+                : tab === 'team' ? 'Team'
+                : tab === 'comments' ? 'Comments'
                 : 'History'}
             </Text>
           </TouchableOpacity>
@@ -462,6 +511,65 @@ ${(project.project_status_history?.length || 0) > 0 ? `
                     </View>
                   ))}
                 </View>
+              )}
+            </View>
+          )}
+
+          {activeTab === 'team' && (
+            <View style={styles.teamSection}>
+              {loadingTeam ? (
+                <ActivityIndicator color={Colors.primary[500]} style={{ marginTop: 20 }} />
+              ) : (
+                <>
+                  <Text style={styles.tabTitle}>Assigned Team Members</Text>
+                  {assignedMembers.length === 0 ? (
+                    <Text style={styles.emptyTextSub}>No one is assigned to this project yet.</Text>
+                  ) : (
+                    assignedMembers.map(m => (
+                      <View key={m.id} style={styles.assignedCard}>
+                        <View style={styles.memberRowLeft}>
+                          <View style={styles.miniAvatar}>
+                            <Text style={styles.miniAvatarText}>{(m.profiles?.full_name || 'U').charAt(0).toUpperCase()}</Text>
+                          </View>
+                          <View>
+                            <Text style={styles.mName}>{m.profiles?.full_name || 'Unknown'}</Text>
+                            <Text style={styles.mRole}>{m.profiles?.role}</Text>
+                          </View>
+                        </View>
+                        {(profile?.role === 'signmaker' || profile?.role === 'sloan_admin' || profile?.role === 'superadmin') && (
+                          <TouchableOpacity onPress={() => toggleAssignment(m.user_id)}>
+                            <Trash2 size={16} color={Colors.error[500]} />
+                          </TouchableOpacity>
+                        )}
+                      </View>
+                    ))
+                  )}
+
+                  {(profile?.role === 'signmaker' || profile?.role === 'sloan_admin' || profile?.role === 'superadmin') && (
+                    <>
+                      <Text style={[styles.tabTitle, { marginTop: 24 }]}>Available Team Members</Text>
+                      {companyMembers
+                        .filter(cm => !assignedMembers.some(am => am.user_id === cm.user_id))
+                        .map(cm => (
+                          <TouchableOpacity key={cm.id} style={styles.memberSelectCard} onPress={() => toggleAssignment(cm.user_id)}>
+                            <View style={styles.memberRowLeft}>
+                              <View style={[styles.miniAvatar, { backgroundColor: Colors.neutral[200] }]}>
+                                <Text style={[styles.miniAvatarText, { color: Colors.neutral[600] }]}>{(cm.profiles?.full_name || 'U').charAt(0).toUpperCase()}</Text>
+                              </View>
+                              <View>
+                                <Text style={styles.mName}>{cm.profiles?.full_name || 'Unknown'}</Text>
+                                <Text style={styles.mRole}>{cm.role || cm.profiles?.role}</Text>
+                              </View>
+                            </View>
+                            <View style={styles.addMemberBtn}>
+                              <Text style={styles.addMemberBtnText}>Assign</Text>
+                            </View>
+                          </TouchableOpacity>
+                        ))}
+                      {companyMembers.length === 0 && <Text style={styles.emptyTextSub}>No other members found in your company.</Text>}
+                    </>
+                  )}
+                </>
               )}
             </View>
           )}
@@ -615,4 +723,30 @@ const styles = StyleSheet.create({
     justifyContent: 'center', alignItems: 'center',
   },
   sendBtnDisabled: { backgroundColor: Colors.neutral[300] },
+  teamSection: { padding: 16 },
+  tabTitle: { fontFamily: 'Inter-SemiBold', fontSize: 14, color: Colors.neutral[800], marginBottom: 12 },
+  assignedCard: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    backgroundColor: '#fff', padding: 12, borderRadius: 12, marginBottom: 8,
+    borderWidth: 1, borderColor: Colors.neutral[100],
+  },
+  memberSelectCard: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    backgroundColor: '#fff', padding: 12, borderRadius: 12, marginBottom: 8,
+    borderWidth: 1, borderColor: Colors.neutral[100], borderStyle: 'dashed',
+  },
+  memberRowLeft: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  miniAvatar: {
+    width: 32, height: 32, borderRadius: 8,
+    backgroundColor: Colors.primary[600],
+    justifyContent: 'center', alignItems: 'center',
+  },
+  miniAvatarText: { fontFamily: 'Inter-Bold', fontSize: 12, color: '#fff' },
+  mName: { fontFamily: 'Inter-SemiBold', fontSize: 13, color: Colors.neutral[800] },
+  mRole: { fontFamily: 'Inter-Regular', fontSize: 11, color: Colors.neutral[500] },
+  addMemberBtn: {
+    backgroundColor: Colors.primary[50], paddingHorizontal: 10, paddingVertical: 5, borderRadius: 6,
+  },
+  addMemberBtnText: { fontFamily: 'Inter-SemiBold', fontSize: 11, color: Colors.primary[600] },
+  emptyTextSub: { fontFamily: 'Inter-Regular', fontSize: 13, color: Colors.neutral[400], textAlign: 'center', marginTop: 10 },
 });

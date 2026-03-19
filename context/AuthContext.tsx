@@ -80,18 +80,30 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (companyName) {
         const { data: company } = await supabase
           .from('companies')
-          .insert({ name: companyName })
+          .insert({ 
+            name: companyName,
+            status: 'pending' // Default status is pending
+          })
           .select()
           .single();
-        companyId = company?.id || null;
+        
+        if (company) {
+          companyId = company.id;
+          // Add to company_members
+          await supabase.from('company_members').insert({
+            company_id: companyId,
+            user_id: data.user.id,
+            role: 'signmaker' // New role hierarchy
+          });
+        }
       }
 
       await supabase
         .from('profiles')
         .update({
           full_name: fullName,
-          company_id: companyId,
-          role: companyName ? 'admin' : 'employee',
+          company_id: companyId, // Keep for backward compatibility for now
+          role: companyName ? 'signmaker' : 'installer', // Use new roles
           language: language || 'en',
         })
         .eq('id', data.user.id);

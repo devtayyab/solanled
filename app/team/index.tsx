@@ -24,8 +24,9 @@ interface Invitation {
 }
 
 const ROLES = [
-  { value: 'admin', label: 'Admin', desc: 'Full access to all company resources', icon: Crown },
-  { value: 'employee', label: 'Employee', desc: 'Can view and manage projects', icon: User },
+  { value: 'signmaker', label: 'Signmaker', desc: 'Company owner with full management access', icon: Crown },
+  { value: 'installer', label: 'Installer', desc: 'Can manage assigned projects & upload photos', icon: User },
+  { value: 'customer', label: 'Customer', desc: 'Can view their own project status', icon: Shield },
 ];
 
 export default function TeamManagementScreen() {
@@ -36,20 +37,36 @@ export default function TeamManagementScreen() {
   const [loading, setLoading] = useState(true);
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [inviteEmail, setInviteEmail] = useState('');
-  const [inviteRole, setInviteRole] = useState('employee');
+  const [inviteRole, setInviteRole] = useState('installer');
   const [inviting, setInviting] = useState(false);
   const [inviteError, setInviteError] = useState('');
-  const isAdmin = profile?.role === 'admin' || profile?.role === 'superadmin';
+  const isAdmin = profile?.role === 'signmaker' || profile?.role === 'sloan_admin' || profile?.role === 'superadmin' || profile?.role === 'admin';
 
   const fetchData = async () => {
     if (!profile?.company_id) { setLoading(false); return; }
 
     const [membersRes, invitesRes] = await Promise.all([
-      supabase.from('profiles').select('*').eq('company_id', profile.company_id).order('created_at'),
-      supabase.from('company_invitations').select('*').eq('company_id', profile.company_id).eq('accepted', false).order('created_at', { ascending: false }),
+      supabase
+        .from('company_members')
+        .select('*, profiles:user_id(*)')
+        .eq('company_id', profile.company_id)
+        .order('created_at'),
+      supabase
+        .from('company_invitations')
+        .select('*')
+        .eq('company_id', profile.company_id)
+        .eq('accepted', false)
+        .order('created_at', { ascending: false }),
     ]);
 
-    if (membersRes.data) setMembers(membersRes.data);
+    if (membersRes.data) {
+      const mappedMembers = membersRes.data.map((m: any) => ({
+        ...m.profiles,
+        company_role: m.role,
+        membership_id: m.id
+      }));
+      setMembers(mappedMembers);
+    }
     if (invitesRes.data) setInvitations(invitesRes.data);
     setLoading(false);
   };
@@ -80,27 +97,27 @@ export default function TeamManagementScreen() {
         data: { email: inviteEmail.trim(), role: inviteRole },
       });
       setInviteEmail('');
-      setInviteRole('employee');
+      setInviteRole('installer');
       setShowInviteModal(false);
       await fetchData();
     }
     setInviting(false);
   };
 
-  const handleChangeRole = async (memberId: string, newRole: string) => {
+  const handleChangeRole = async (memberId: string, membershipId: string, newRole: string) => {
     if (!isAdmin) return;
-    await supabase.from('profiles').update({ role: newRole }).eq('id', memberId);
-    setMembers(prev => prev.map(m => m.id === memberId ? { ...m, role: newRole as any } : m));
+    await supabase.from('company_members').update({ role: newRole }).eq('id', membershipId);
+    setMembers(prev => prev.map(m => (m as any).membership_id === membershipId ? { ...m, company_role: newRole } : m));
   };
 
-  const handleRemoveMember = async (memberId: string, memberName: string) => {
+  const handleRemoveMember = async (memberId: string, membershipId: string, memberName: string) => {
     if (!isAdmin) return;
     Alert.alert('Remove Member', `Remove ${memberName} from the company?`, [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Remove', style: 'destructive', onPress: async () => {
-          await supabase.from('profiles').update({ company_id: null, role: 'employee' }).eq('id', memberId);
-          setMembers(prev => prev.filter(m => m.id !== memberId));
+          await supabase.from('company_members').delete().eq('id', membershipId);
+          setMembers(prev => prev.filter(m => (m as any).membership_id !== membershipId));
         }
       }
     ]);
@@ -136,25 +153,25 @@ export default function TeamManagementScreen() {
             {isSelf && <View style={styles.selfBadge}><Text style={styles.selfBadgeText}>You</Text></View>}
           </View>
           <View style={styles.roleRow}>
-            <RoleIcon size={12} color={getRoleColor(item.role)} />
-            <Text style={[styles.memberRole, { color: getRoleColor(item.role) }]}>
-              {item.role.charAt(0).toUpperCase() + item.role.slice(1)}
+            <RoleIcon size={12} color={getRoleColor((item as any).company_role || item.role)} />
+            <Text style={[styles.memberRole, { color: getRoleColor((item as any).company_role || item.role) }]}>
+              {((item as any).company_role || item.role).charAt(0).toUpperCase() + ((item as any).company_role || item.role).slice(1)}
             </Text>
           </View>
         </View>
-        {isAdmin && !isSelf && item.role !== 'superadmin' && (
+        {isAdmin && !isSelf && (item as any).company_role !== 'superadmin' && (item as any).company_role !== 'signmaker' && (
           <View style={styles.memberActions}>
             <TouchableOpacity
               style={styles.roleToggle}
-              onPress={() => handleChangeRole(item.id, item.role === 'admin' ? 'employee' : 'admin')}
+              onPress={() => handleChangeRole(item.id, (item as any).membership_id, (item as any).company_role === 'admin' ? 'installer' : 'admin')}
             >
               <Text style={styles.roleToggleText}>
-                {item.role === 'admin' ? 'Demote' : 'Make Admin'}
+                {(item as any).company_role === 'admin' ? 'Demote' : 'Make Admin'}
               </Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={styles.removeBtn}
-              onPress={() => handleRemoveMember(item.id, item.full_name)}
+              onPress={() => handleRemoveMember(item.id, (item as any).membership_id, item.full_name)}
             >
               <Trash2 size={14} color={Colors.error[500]} />
             </TouchableOpacity>
