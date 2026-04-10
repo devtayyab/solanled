@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import {
   View, Text, ScrollView, StyleSheet,
   TouchableOpacity, RefreshControl, Image
@@ -11,11 +11,11 @@ import { useAuth } from '../../context/AuthContext';
 import { t } from '../../lib/i18n';
 import { Colors, StatusColors } from '../../constants/Colors';
 import { Project } from '../../types';
-import { Plus, ArrowRight, MapPin, Clock, CircleDot, Bell, Map, Users } from 'lucide-react-native';
+import { Plus, ArrowRight, MapPin, Clock, CircleDot, Bell, Map, Users, RefreshCw, ShieldAlert } from 'lucide-react-native';
 import { withCache } from '../../lib/offlineCache';
 
 export default function DashboardScreen() {
-  const { user, profile } = useAuth();
+  const { user, profile, refreshProfile } = useAuth();
   const router = useRouter();
   const [projects, setProjects] = useState<Project[]>([]);
   const [allProjects, setAllProjects] = useState<Project[]>([]);
@@ -24,48 +24,63 @@ export default function DashboardScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
+  // Safely extract company status whether it's an object or array (Supabase join quirk)
+  const companyData = useMemo(() => {
+    const rawCompanies = (profile as any)?.companies;
+    return Array.isArray(rawCompanies) ? rawCompanies[0] : rawCompanies;
+  }, [profile]);
+
+  const isPending = companyData?.status === 'pending';
+  const isRejected = companyData?.status === 'rejected';
+
   const fetchData = async (force = false) => {
     if (!profile?.company_id || !user?.id) { setLoading(false); return; }
+    if (isPending || isRejected) { setLoading(false); return; }
 
-    const [{ data: projectsData }, notifRes] = await Promise.all([
-      withCache(
-        `dashboard_projects_${profile.company_id}`,
-        async () => {
-          const { data } = await supabase
-            .from('projects')
-            .select('*, project_photos(id, url)')
-            .eq('company_id', profile.company_id)
-            .order('created_at', { ascending: false });
-          return data || [];
-        },
-        force ? 0 : undefined
-      ),
-      supabase
-        .from('notifications')
-        .select('id', { count: 'exact' })
-        .eq('user_id', user.id)
-        .eq('read', false),
-    ]);
+    try {
+      const [{ data: projectsData }, notifRes] = await Promise.all([
+        withCache(
+          `dashboard_projects_${profile.company_id}`,
+          async () => {
+            const { data } = await supabase
+              .from('projects')
+              .select('*, project_photos(id, url)')
+              .eq('company_id', profile.company_id)
+              .order('created_at', { ascending: false });
+            return data || [];
+          },
+          force ? 0 : undefined
+        ),
+        supabase
+          .from('notifications')
+          .select('id', { count: 'exact' })
+          .eq('user_id', user.id)
+          .eq('read', false),
+      ]);
 
-    if (projectsData) {
-      setAllProjects(projectsData);
-      setProjects(projectsData.slice(0, 5));
-      setStats({
-        total: projectsData.length,
-        pending: projectsData.filter((p: Project) => p.status === 'pending').length,
-        in_progress: projectsData.filter((p: Project) => p.status === 'in_progress').length,
-        installed: projectsData.filter((p: Project) => p.status === 'installed').length,
-        completed: projectsData.filter((p: Project) => p.status === 'completed').length,
-      });
+      if (projectsData) {
+        setAllProjects(projectsData);
+        setProjects(projectsData.slice(0, 5));
+        setStats({
+          total: projectsData.length,
+          pending: projectsData.filter((p: Project) => p.status === 'pending').length,
+          in_progress: projectsData.filter((p: Project) => p.status === 'in_progress').length,
+          installed: projectsData.filter((p: Project) => p.status === 'installed').length,
+          completed: projectsData.filter((p: Project) => p.status === 'completed').length,
+        });
+      }
+      setUnreadCount(notifRes.count || 0);
+    } catch (error) {
+      console.error('Dashboard fetchData error:', error);
+    } finally {
+      setLoading(false);
     }
-    setUnreadCount(notifRes.count || 0);
-    setLoading(false);
   };
 
-  useFocusEffect(useCallback(() => { fetchData(); }, [profile?.company_id, user?.id]));
+  useFocusEffect(useCallback(() => { fetchData(); }, [profile?.company_id, user?.id, companyData?.status]));
 
   useEffect(() => {
-    if (!user?.id) return;
+    if (!user?.id || isPending || isRejected) return;
     const channel = supabase
       .channel('project-updates')
       .on('postgres_changes', {
@@ -78,9 +93,14 @@ export default function DashboardScreen() {
       }, () => { setUnreadCount(prev => prev + 1); })
       .subscribe();
     return () => { supabase.removeChannel(channel); };
-  }, [user?.id, profile?.company_id]);
+  }, [user?.id, profile?.company_id, isPending, isRejected]);
 
-  const onRefresh = async () => { setRefreshing(true); await fetchData(true); setRefreshing(false); };
+  const onRefresh = async () => { 
+    setRefreshing(true); 
+    await refreshProfile();
+    await fetchData(true); 
+    setRefreshing(false); 
+  };
 
   const getStatusLabel = (status: string) => ({
     pending: t('status_pending'), in_progress: t('status_in_progress'),
@@ -101,8 +121,8 @@ export default function DashboardScreen() {
             <View style={styles.greetingBlock}>
               <Text style={styles.greeting}>Good day,</Text>
               <Text style={styles.userName}>{profile?.full_name || user?.email?.split('@')[0]}</Text>
-              {profile?.companies?.name && (
-                <Text style={styles.companyName}>{profile.companies.name}</Text>
+              {companyData?.name && (
+                <Text style={styles.companyName}>{companyData.name}</Text>
               )}
             </View>
             <View style={styles.headerActions}>
@@ -125,20 +145,62 @@ export default function DashboardScreen() {
           </View>
 
           <View style={styles.quickActions}>
-            <TouchableOpacity style={styles.quickBtn} onPress={() => router.push('/map')}>
+            <TouchableOpacity 
+              style={[styles.quickBtn, isPending && styles.disabledBtn]} 
+              onPress={() => !isPending && router.push('/map')}
+              disabled={isPending}
+            >
               <Map size={16} color="rgba(255,255,255,0.9)" />
               <Text style={styles.quickBtnText}>Map View</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.quickBtn} onPress={() => router.push('/team')}>
+            <TouchableOpacity 
+              style={[styles.quickBtn, isPending && styles.disabledBtn]} 
+              onPress={() => !isPending && router.push('/team')}
+              disabled={isPending}
+            >
               <Users size={16} color="rgba(255,255,255,0.9)" />
               <Text style={styles.quickBtnText}>Team</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={[styles.quickBtn, styles.quickBtnPrimary]} onPress={() => router.push('/project/create')}>
+            <TouchableOpacity 
+              style={[styles.quickBtn, styles.quickBtnPrimary, isPending && styles.disabledBtn]} 
+              onPress={() => !isPending && router.push('/project/create')}
+              disabled={isPending}
+            >
               <Plus size={16} color="#fff" />
               <Text style={styles.quickBtnText}>New Project</Text>
             </TouchableOpacity>
           </View>
         </LinearGradient>
+
+        {isPending && (
+          <View style={styles.pendingOverlay}>
+            <View style={styles.pendingCard}>
+              <Clock size={40} color={Colors.warning[500]} />
+              <Text style={styles.pendingTitle}>Wait for Approval</Text>
+              <Text style={styles.pendingText}>
+                Your company registration is currently being reviewed by SloanLED Admins. 
+                You will be notified once your account is active.
+              </Text>
+              <TouchableOpacity style={styles.refreshBtn} onPress={() => onRefresh()}>
+                <RefreshCw size={16} color={Colors.primary[600]} />
+                <Text style={styles.refreshBtnText}>Check Status</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
+
+        {isRejected && (
+          <View style={styles.pendingOverlay}>
+            <View style={[styles.pendingCard, { backgroundColor: '#FEF2F2', borderColor: '#FEE2E2' }]}>
+              <ShieldAlert size={40} color={Colors.error[500]} />
+              <Text style={[styles.pendingTitle, { color: '#991B1B' }]}>Account Rejected</Text>
+              <Text style={[styles.pendingText, { color: '#B91C1C' }]}>
+                Unfortunately, your company application was not accepted. 
+                Please contact SloanLED support for more information.
+              </Text>
+            </View>
+          </View>
+        )}
 
         <View style={styles.statsGrid}>
           <StatCard label={t('total_projects')} value={stats.total} color={Colors.primary[500]} bg={Colors.primary[50]} />
@@ -262,6 +324,25 @@ const styles = StyleSheet.create({
   },
   quickBtnPrimary: { backgroundColor: Colors.primary[500], borderColor: Colors.primary[400] },
   quickBtnText: { fontFamily: 'Inter-SemiBold', fontSize: 12, color: '#fff' },
+  disabledBtn: { opacity: 0.5 },
+  pendingOverlay: { padding: 20, marginTop: -20 },
+  pendingCard: {
+    backgroundColor: '#FFFBEB', borderRadius: 20, padding: 24,
+    alignItems: 'center', borderWidth: 1, borderColor: '#FEF3C7',
+    shadowColor: '#D97706', shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1, shadowRadius: 10, elevation: 3,
+  },
+  pendingTitle: { fontFamily: 'Inter-Bold', fontSize: 18, color: '#92400E', marginTop: 12 },
+  pendingText: { 
+    fontFamily: 'Inter-Regular', fontSize: 14, color: '#B45309', 
+    textAlign: 'center', marginTop: 8, lineHeight: 20 
+  },
+  refreshBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    marginTop: 20, backgroundColor: '#fff', paddingHorizontal: 16,
+    paddingVertical: 10, borderRadius: 12, borderWidth: 1, borderColor: '#FEF3C7',
+  },
+  refreshBtnText: { fontFamily: 'Inter-SemiBold', fontSize: 14, color: Colors.primary[600] },
   statsGrid: {
     flexDirection: 'row', flexWrap: 'wrap',
     paddingHorizontal: 16, paddingTop: 16, gap: 8,

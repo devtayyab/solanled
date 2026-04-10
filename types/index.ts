@@ -5,6 +5,7 @@ export interface Company {
   country: string;
   phone: string;
   logo_url: string;
+  status: 'pending' | 'approved' | 'rejected';
   created_at: string;
   updated_at: string;
 }
@@ -12,7 +13,7 @@ export interface Company {
 export interface Profile {
   id: string;
   company_id: string | null;
-  role: 'admin' | 'employee' | 'superadmin';
+  role: 'admin' | 'employee' | 'superadmin' | 'sloan_admin' | 'signmaker' | 'installer' | 'customer';
   full_name: string;
   avatar_url: string;
   language: string;

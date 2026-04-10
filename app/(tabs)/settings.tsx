@@ -105,7 +105,8 @@ export default function SettingsScreen() {
     }
   };
 
-  const isAdmin = profile?.role === 'admin' || profile?.role === 'superadmin';
+  const isAdmin = profile?.role === 'admin' || profile?.role === 'superadmin' || profile?.role === 'signmaker' || profile?.role === 'sloan_admin';
+  const isSloanAdmin = profile?.role === 'sloan_admin' || profile?.role === 'superadmin';
 
   return (
     <SafeAreaView style={styles.container}>
@@ -203,6 +204,17 @@ export default function SettingsScreen() {
                 subtitle="Sync documents from WordPress"
                 onPress={() => router.push('/wordpress')}
               />
+              {isSloanAdmin && (
+                <>
+                  <View style={styles.divider} />
+                  <SettingRow
+                    icon={Shield} iconBg="#FEE2E2" iconColor={Colors.error[600]}
+                    title="Company Approvals"
+                    subtitle="Review pending company signups"
+                    onPress={() => router.push('/admin/companies')}
+                  />
+                </>
+              )}
             </>
           )}
 
