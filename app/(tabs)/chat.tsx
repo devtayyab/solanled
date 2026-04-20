@@ -10,7 +10,8 @@ import { useAuth } from '../../context/AuthContext';
 import { t } from '../../lib/i18n';
 import { Colors } from '../../constants/Colors';
 import { AiMessage } from '../../types';
-import { Send, Bot, Sparkles, Volume2, VolumeX } from 'lucide-react-native';
+import { Send, Bot, Sparkles, Volume2, VolumeX, Mic, MicOff, AlertCircle } from 'lucide-react-native';
+import { Audio } from 'expo-av';
 
 const QUICK_PROMPTS = [
   'How do I install SloanLED modules?',
@@ -32,13 +33,26 @@ const AI_FALLBACK_RESPONSES: Record<string, string> = {
 
 function getFallbackResponse(message: string): string {
   const lower = message.toLowerCase();
+  
+  // App-specific context check
+  const isAppRelated = 
+    lower.includes('install') || lower.includes('hello') || lower.includes('hi') ||
+    lower.includes('datasheet') || lower.includes('project') || lower.includes('gps') ||
+    lower.includes('photo') || lower.includes('led') || lower.includes('sloan') ||
+    lower.includes('upload') || lower.includes('report') || lower.includes('status');
+
+  if (!isAppRelated && lower.length > 3) {
+    return "I am the SloanLED AI Assistant. I am designed specifically to help with signage projects, product installation, and technical datasheets. I cannot assist with general off-topic questions. How can I help you with your work today?";
+  }
+
   if (lower.includes('hello') || lower.includes('hi') || lower.includes('hey')) return AI_FALLBACK_RESPONSES.hello;
   if (lower.includes('install')) return AI_FALLBACK_RESPONSES.install;
   if (lower.includes('datasheet') || lower.includes('spec')) return AI_FALLBACK_RESPONSES.datasheet;
   if (lower.includes('project') || lower.includes('status')) return AI_FALLBACK_RESPONSES.project;
   if (lower.includes('gps') || lower.includes('location')) return AI_FALLBACK_RESPONSES.gps;
   if (lower.includes('photo') || lower.includes('image') || lower.includes('picture')) return AI_FALLBACK_RESPONSES.photo;
-  if (lower.includes('led') || lower.includes('product')) return AI_FALLBACK_RESPONSES.led;
+  if (lower.includes('led') || lower.includes('product') || lower.includes('sloan')) return AI_FALLBACK_RESPONSES.led;
+  
   return AI_FALLBACK_RESPONSES.default;
 }
 
@@ -49,6 +63,9 @@ export default function ChatScreen() {
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
   const [speakingId, setSpeakingId] = useState<string | null>(null);
+  const [isRecording, setIsRecording] = useState(false);
+  const [recording, setRecording] = useState<Audio.Recording | null>(null);
+  const [permissionResponse, requestPermission] = Audio.usePermissions();
   const flatListRef = useRef<FlatList>(null);
 
   useEffect(() => {
@@ -83,19 +100,41 @@ export default function ChatScreen() {
 
     await supabase.from('ai_messages').insert({ session_id: sessionId, role: 'user', content: messageText });
 
-    await new Promise(r => setTimeout(r, 800));
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      const response = await fetch(`${process.env.EXPO_PUBLIC_BACKEND_URL || 'http://localhost:3000'}/api/v1/ai/sessions/${sessionId}/messages`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session?.access_token}`
+        },
+        body: JSON.stringify({ message: messageText })
+      });
 
-    const reply = getFallbackResponse(messageText);
-    const { data: savedMsg } = await supabase.from('ai_messages').insert({
-      session_id: sessionId, role: 'assistant', content: reply,
-    }).select().single();
+      const data = await response.json();
+      
+      if (data.message) {
+        setMessages(prev => [
+          ...prev.filter(m => m.id !== userMsg.id),
+          { ...userMsg, id: `user_${Date.now()}` },
+          data.message,
+        ]);
+      }
+    } catch (error) {
+      console.error("AI Error:", error);
+      const reply = getFallbackResponse(messageText);
+      const { data: savedMsg } = await supabase.from('ai_messages').insert({
+        session_id: sessionId, role: 'assistant', content: reply,
+      }).select().single();
 
-    if (savedMsg) {
-      setMessages(prev => [
-        ...prev.filter(m => m.id !== userMsg.id),
-        { ...userMsg, id: `user_${Date.now()}` },
-        savedMsg,
-      ]);
+      if (savedMsg) {
+        setMessages(prev => [
+          ...prev.filter(m => m.id !== userMsg.id),
+          { ...userMsg, id: `user_${Date.now()}` },
+          savedMsg,
+        ]);
+      }
     }
 
     setSending(false);
@@ -117,6 +156,52 @@ export default function ChatScreen() {
       onError: () => setSpeakingId(null),
       onStopped: () => setSpeakingId(null),
     });
+  };
+
+  const startRecording = async () => {
+    try {
+      if (permissionResponse?.status !== 'granted') {
+        console.log('Requesting permissions..');
+        await requestPermission();
+      }
+      await Audio.setAudioModeAsync({
+        allowsRecordingIOS: true,
+        playsInSilentModeIOS: true,
+      });
+
+      console.log('Starting recording..');
+      const { recording } = await Audio.Recording.createAsync(
+        Audio.RecordingOptionsPresets.HIGH_QUALITY
+      );
+      setRecording(recording);
+      setIsRecording(true);
+      console.log('Recording started');
+    } catch (err) {
+      console.error('Failed to start recording', err);
+    }
+  };
+
+  const stopRecording = async () => {
+    console.log('Stopping recording..');
+    if (!recording) return;
+
+    setRecording(null);
+    setIsRecording(false);
+    await recording.stopAndUnloadAsync();
+    await Audio.setAudioModeAsync({
+      allowsRecordingIOS: false,
+    });
+    const uri = recording.getURI();
+    console.log('Recording stopped and stored at', uri);
+
+    // Placeholder for Speech-To-Text API (Whisper/Deepgram)
+    // For now, we simulate converting voice to text
+    // In a real scenario, you'd upload the audio file to an STT service here
+    setSending(true);
+    setTimeout(() => {
+      // Simulate recognized speech from the voice recording
+      sendMessage("Hi, tell me about Luxa products"); 
+    }, 1500);
   };
 
   const renderMessage = ({ item }: { item: AiMessage }) => {
@@ -204,6 +289,17 @@ export default function ChatScreen() {
         )}
 
         <View style={styles.inputBar}>
+          <TouchableOpacity
+            style={[styles.micBtn, isRecording && styles.micBtnActive]}
+            onPressIn={startRecording}
+            onPressOut={stopRecording}
+          >
+            {isRecording ? (
+              <MicOff size={20} color="#fff" />
+            ) : (
+              <Mic size={20} color={Colors.primary[600]} />
+            )}
+          </TouchableOpacity>
           <TextInput
             style={styles.textInput}
             placeholder={t('ask_assistant')}
@@ -298,6 +394,14 @@ const styles = StyleSheet.create({
     borderRadius: 20, paddingHorizontal: 16, paddingVertical: 10,
     fontFamily: 'Inter-Regular', fontSize: 14, color: Colors.neutral[900],
     maxHeight: 100,
+  },
+  micBtn: {
+    width: 42, height: 42, borderRadius: 21,
+    backgroundColor: Colors.primary[50],
+    justifyContent: 'center', alignItems: 'center',
+  },
+  micBtnActive: {
+    backgroundColor: Colors.error[500],
   },
   sendBtn: {
     width: 42, height: 42, borderRadius: 21,
