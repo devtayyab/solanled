@@ -10,8 +10,7 @@ import { useAuth } from '../../context/AuthContext';
 import { t } from '../../lib/i18n';
 import { Colors } from '../../constants/Colors';
 import { AiMessage } from '../../types';
-import { Send, Bot, Sparkles, Volume2, VolumeX, Mic, MicOff, AlertCircle } from 'lucide-react-native';
-import { Audio } from 'expo-av';
+import { Send, Bot, Sparkles, Volume2, VolumeX } from 'lucide-react-native';
 
 const QUICK_PROMPTS = [
   'How do I install SloanLED modules?',
@@ -63,9 +62,6 @@ export default function ChatScreen() {
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
   const [speakingId, setSpeakingId] = useState<string | null>(null);
-  const [isRecording, setIsRecording] = useState(false);
-  const [recording, setRecording] = useState<Audio.Recording | null>(null);
-  const [permissionResponse, requestPermission] = Audio.usePermissions();
   const flatListRef = useRef<FlatList>(null);
 
   useEffect(() => {
@@ -158,52 +154,6 @@ export default function ChatScreen() {
     });
   };
 
-  const startRecording = async () => {
-    try {
-      if (permissionResponse?.status !== 'granted') {
-        console.log('Requesting permissions..');
-        await requestPermission();
-      }
-      await Audio.setAudioModeAsync({
-        allowsRecordingIOS: true,
-        playsInSilentModeIOS: true,
-      });
-
-      console.log('Starting recording..');
-      const { recording } = await Audio.Recording.createAsync(
-        Audio.RecordingOptionsPresets.HIGH_QUALITY
-      );
-      setRecording(recording);
-      setIsRecording(true);
-      console.log('Recording started');
-    } catch (err) {
-      console.error('Failed to start recording', err);
-    }
-  };
-
-  const stopRecording = async () => {
-    console.log('Stopping recording..');
-    if (!recording) return;
-
-    setRecording(null);
-    setIsRecording(false);
-    await recording.stopAndUnloadAsync();
-    await Audio.setAudioModeAsync({
-      allowsRecordingIOS: false,
-    });
-    const uri = recording.getURI();
-    console.log('Recording stopped and stored at', uri);
-
-    // Placeholder for Speech-To-Text API (Whisper/Deepgram)
-    // For now, we simulate converting voice to text
-    // In a real scenario, you'd upload the audio file to an STT service here
-    setSending(true);
-    setTimeout(() => {
-      // Simulate recognized speech from the voice recording
-      sendMessage("Hi, tell me about Luxa products"); 
-    }, 1500);
-  };
-
   const renderMessage = ({ item }: { item: AiMessage }) => {
     const isUser = item.role === 'user';
     const isSpeaking = speakingId === item.id;
@@ -289,17 +239,6 @@ export default function ChatScreen() {
         )}
 
         <View style={styles.inputBar}>
-          <TouchableOpacity
-            style={[styles.micBtn, isRecording && styles.micBtnActive]}
-            onPressIn={startRecording}
-            onPressOut={stopRecording}
-          >
-            {isRecording ? (
-              <MicOff size={20} color="#fff" />
-            ) : (
-              <Mic size={20} color={Colors.primary[600]} />
-            )}
-          </TouchableOpacity>
           <TextInput
             style={styles.textInput}
             placeholder={t('ask_assistant')}
@@ -394,14 +333,6 @@ const styles = StyleSheet.create({
     borderRadius: 20, paddingHorizontal: 16, paddingVertical: 10,
     fontFamily: 'Inter-Regular', fontSize: 14, color: Colors.neutral[900],
     maxHeight: 100,
-  },
-  micBtn: {
-    width: 42, height: 42, borderRadius: 21,
-    backgroundColor: Colors.primary[50],
-    justifyContent: 'center', alignItems: 'center',
-  },
-  micBtnActive: {
-    backgroundColor: Colors.error[500],
   },
   sendBtn: {
     width: 42, height: 42, borderRadius: 21,
