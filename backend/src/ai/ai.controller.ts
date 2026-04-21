@@ -29,7 +29,8 @@ export class AiController {
     @Param('sessionId') sessionId: string,
     @Body() body: { message: string },
   ) {
-    return this.aiService.sendMessage(req.user.id, sessionId, body.message);
+    const token = req.headers.authorization;
+    return this.aiService.sendMessage(req.user.id, sessionId, body.message, token);
   }
 
   @Get('sessions/:sessionId/messages')

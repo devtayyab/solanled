@@ -8,7 +8,7 @@ import { useRouter, useFocusEffect } from 'expo-router';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
 import { Colors } from '../../constants/Colors';
-import { ArrowLeft, Check, X, Building2, Clock, ShieldCheck, ShieldAlert } from 'lucide-react-native';
+import { ArrowLeft, Check, X, Building2, Clock, ShieldCheck, ShieldAlert, Plus } from 'lucide-react-native';
 
 interface CompanyApproval {
   id: string;
@@ -138,7 +138,10 @@ export default function AdminCompaniesScreen() {
         <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
           <ArrowLeft size={20} color={Colors.neutral[700]} />
         </TouchableOpacity>
-        <Text style={styles.title}>Company Approvals</Text>
+        <Text style={[styles.title, { flex: 1 }]}>Company Approvals</Text>
+        <TouchableOpacity style={styles.createBtn} onPress={() => router.push('/admin/companies/create' as any)}>
+          <Plus size={20} color="#fff" />
+        </TouchableOpacity>
       </View>
 
       <FlatList
@@ -170,6 +173,11 @@ const styles = StyleSheet.create({
   backBtn: {
     width: 36, height: 36, borderRadius: 10,
     backgroundColor: Colors.neutral[100],
+    justifyContent: 'center', alignItems: 'center',
+  },
+  createBtn: {
+    width: 36, height: 36, borderRadius: 10,
+    backgroundColor: Colors.primary[600],
     justifyContent: 'center', alignItems: 'center',
   },
   title: { fontFamily: 'Inter-Bold', fontSize: 18, color: Colors.neutral[900] },

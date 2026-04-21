@@ -85,8 +85,9 @@ export default function ChatScreen() {
     setInput('');
     setSending(true);
 
+    const tempId = `temp_${Date.now()}_${Math.random().toString(36).substring(7)}`;
     const userMsg: AiMessage = {
-      id: `temp_${Date.now()}`,
+      id: tempId,
       session_id: sessionId,
       role: 'user',
       content: messageText,
@@ -94,7 +95,11 @@ export default function ChatScreen() {
     };
     setMessages(prev => [...prev, userMsg]);
 
-    await supabase.from('ai_messages').insert({ session_id: sessionId, role: 'user', content: messageText });
+    const { data: realUserMsg } = await supabase.from('ai_messages').insert({ 
+      session_id: sessionId, 
+      role: 'user', 
+      content: messageText 
+    }).select().single();
 
     try {
       const { data: { session } } = await supabase.auth.getSession();
@@ -111,11 +116,11 @@ export default function ChatScreen() {
       const data = await response.json();
       
       if (data.message) {
-        setMessages(prev => [
-          ...prev.filter(m => m.id !== userMsg.id),
-          { ...userMsg, id: `user_${Date.now()}` },
-          data.message,
-        ]);
+        setMessages(prev => {
+          const filtered = prev.filter(m => m.id !== tempId);
+          const list = realUserMsg ? [...filtered, realUserMsg] : prev;
+          return [...list, data.message];
+        });
       }
     } catch (error) {
       console.error("AI Error:", error);
@@ -125,11 +130,11 @@ export default function ChatScreen() {
       }).select().single();
 
       if (savedMsg) {
-        setMessages(prev => [
-          ...prev.filter(m => m.id !== userMsg.id),
-          { ...userMsg, id: `user_${Date.now()}` },
-          savedMsg,
-        ]);
+        setMessages(prev => {
+          const filtered = prev.filter(m => m.id !== tempId);
+          const list = realUserMsg ? [...filtered, realUserMsg] : prev;
+          return [...list, savedMsg];
+        });
       }
     }
 
@@ -219,7 +224,7 @@ export default function ChatScreen() {
           <FlatList
             ref={flatListRef}
             data={messages}
-            keyExtractor={i => i.id}
+            keyExtractor={i => i.id.toString()}
             renderItem={renderMessage}
             contentContainerStyle={styles.messageList}
             showsVerticalScrollIndicator={false}

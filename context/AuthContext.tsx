@@ -70,44 +70,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
-      options: { data: { full_name: fullName, language: language || 'en' } },
+      options: { 
+        data: { 
+          full_name: fullName, 
+          company_name: companyName, // Pass to database trigger for automatic setup
+          language: language || 'en' 
+        } 
+      },
     });
     if (error) throw error;
-
-    if (data.user) {
-      let companyId: string | null = null;
-
-      if (companyName) {
-        const { data: company } = await supabase
-          .from('companies')
-          .insert({ 
-            name: companyName,
-            status: 'pending' // Default status is pending
-          })
-          .select()
-          .single();
-        
-        if (company) {
-          companyId = company.id;
-          // Add to company_members
-          await supabase.from('company_members').insert({
-            company_id: companyId,
-            user_id: data.user.id,
-            role: 'signmaker' // New role hierarchy
-          });
-        }
-      }
-
-      await supabase
-        .from('profiles')
-        .update({
-          full_name: fullName,
-          company_id: companyId, // Keep for backward compatibility for now
-          role: companyName ? 'signmaker' : 'installer', // Use new roles
-          language: language || 'en',
-        })
-        .eq('id', data.user.id);
-    }
   };
 
   const signOut = async () => {

@@ -3,6 +3,7 @@ import {
   View, Text, FlatList, StyleSheet, TouchableOpacity,
   TextInput, ActivityIndicator, Alert, Modal, ScrollView
 } from 'react-native';
+import * as Clipboard from 'expo-clipboard';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { supabase } from '../../lib/supabase';
@@ -11,7 +12,7 @@ import { Colors } from '../../constants/Colors';
 import { Profile } from '../../types';
 import {
   ArrowLeft, UserPlus, Users, Mail, ChevronDown,
-  Trash2, Crown, Shield, User, X, Send, Clock, Check
+  Trash2, Crown, Shield, User, X, Send, Clock, Check, Copy
 } from 'lucide-react-native';
 
 interface Invitation {
@@ -128,6 +129,13 @@ export default function TeamManagementScreen() {
     setInvitations(prev => prev.filter(i => i.id !== inviteId));
   };
 
+  const handleCopyLink = async (token: string) => {
+    // Generate a full URL - in production this would be your real domain
+    const inviteLink = `solanled://invite/accept?token=${token}`;
+    await Clipboard.setStringAsync(inviteLink);
+    Alert.alert('Copied', 'Invitation link copied to clipboard. You can now send it to the invited member.');
+  };
+
   const getRoleIcon = (role: string) => {
     if (role === 'admin' || role === 'superadmin') return Crown;
     return User;
@@ -216,7 +224,11 @@ export default function TeamManagementScreen() {
                 <Users size={16} color={Colors.neutral[500]} />
                 <Text style={styles.sectionTitle}>Members ({members.length})</Text>
               </View>
-              {members.map(m => renderMember({ item: m }))}
+              {members.map(m => (
+                <View key={m.id}>
+                  {renderMember({ item: m })}
+                </View>
+              ))}
             </View>
 
             {invitations.length > 0 && (
@@ -235,9 +247,14 @@ export default function TeamManagementScreen() {
                       <Text style={styles.inviteRole}>{inv.role} • Expires {new Date(inv.expires_at).toLocaleDateString()}</Text>
                     </View>
                     {isAdmin && (
-                      <TouchableOpacity onPress={() => handleCancelInvite(inv.id)} style={styles.cancelInviteBtn}>
-                        <X size={14} color={Colors.error[500]} />
-                      </TouchableOpacity>
+                      <View style={styles.inviteActions}>
+                        <TouchableOpacity onPress={() => handleCopyLink((inv as any).token)} style={styles.copyInviteBtn}>
+                          <Copy size={14} color={Colors.primary[600]} />
+                        </TouchableOpacity>
+                        <TouchableOpacity onPress={() => handleCancelInvite(inv.id)} style={styles.cancelInviteBtn}>
+                          <X size={14} color={Colors.error[500]} />
+                        </TouchableOpacity>
+                      </View>
                     )}
                   </View>
                 ))}
@@ -394,6 +411,11 @@ const styles = StyleSheet.create({
   inviteInfo: { flex: 1 },
   inviteEmail: { fontFamily: 'Inter-SemiBold', fontSize: 13, color: Colors.neutral[800] },
   inviteRole: { fontFamily: 'Inter-Regular', fontSize: 11, color: Colors.neutral[500], marginTop: 2 },
+  inviteActions: { flexDirection: 'row', gap: 8 },
+  copyInviteBtn: {
+    width: 28, height: 28, borderRadius: 8,
+    backgroundColor: Colors.primary[50], justifyContent: 'center', alignItems: 'center',
+  },
   cancelInviteBtn: {
     width: 28, height: 28, borderRadius: 8,
     backgroundColor: Colors.error[50], justifyContent: 'center', alignItems: 'center',

@@ -72,11 +72,28 @@ export default function CreateProjectScreen() {
   const removePhoto = (uri: string) => setPhotos(prev => prev.filter(p => p !== uri));
 
   const handleCreate = async () => {
+    if (!profile) { setError('User profile not loaded'); return; }
     if (!title.trim()) { setError('Project title is required'); return; }
-    if (!profile?.company_id) { setError('You must be part of a company'); return; }
+    
     setLoading(true);
     setError('');
     try {
+      let targetCompanyId = profile.company_id;
+
+      // If Superadmin has no company, automatically assign to the first available company
+      if (!targetCompanyId && profile.role === 'superadmin') {
+        const { data: companies } = await supabase.from('companies').select('id').limit(1);
+        if (companies && companies.length > 0) {
+          targetCompanyId = companies[0].id;
+        } else {
+          throw new Error('No companies found in database. Create a company first.');
+        }
+      }
+
+      if (!targetCompanyId) { 
+        throw new Error('You must be part of a company');
+      }
+
       const { data: project, error: err } = await supabase
         .from('projects')
         .insert({
@@ -86,7 +103,7 @@ export default function CreateProjectScreen() {
           location_address: address.trim(),
           gps_lat: gpsLat,
           gps_lng: gpsLng,
-          company_id: profile.company_id,
+          company_id: targetCompanyId,
           created_by: profile.id,
           status: 'pending',
         })
