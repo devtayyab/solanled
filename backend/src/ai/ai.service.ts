@@ -21,9 +21,10 @@ export class AiService {
     return data;
   }
 
-  async sendMessage(userId: string, sessionId: string, message: string) {
-    const { data: session } = await this.supabaseService
-      .getClient()
+  async sendMessage(userId: string, sessionId: string, message: string, token?: string) {
+    const client = token ? this.supabaseService.getClientWithToken(token) : this.supabaseService.getClient();
+
+    const { data: session } = await client
       .from('ai_sessions')
       .select('id, voiceflow_session_id')
       .eq('id', sessionId)
@@ -32,8 +33,7 @@ export class AiService {
 
     if (!session) throw new BadRequestException('Session not found');
 
-    await this.supabaseService
-      .getClient()
+    await client
       .from('ai_messages')
       .insert({ session_id: sessionId, role: 'user', content: message });
 
@@ -67,8 +67,7 @@ export class AiService {
       assistantReply = this.getFallbackResponse(message);
     }
 
-    const { data: savedMessage } = await this.supabaseService
-      .getClient()
+    const { data: savedMessage } = await client
       .from('ai_messages')
       .insert({ session_id: sessionId, role: 'assistant', content: assistantReply })
       .select()

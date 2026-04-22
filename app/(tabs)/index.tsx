@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback, useMemo } from 'react';
 import {
   View, Text, ScrollView, StyleSheet,
-  TouchableOpacity, RefreshControl, Image
+  TouchableOpacity, RefreshControl, Image, Alert
 } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -11,7 +11,7 @@ import { useAuth } from '../../context/AuthContext';
 import { t } from '../../lib/i18n';
 import { Colors, StatusColors } from '../../constants/Colors';
 import { Project } from '../../types';
-import { Plus, ArrowRight, MapPin, Clock, CircleDot, Bell, Map, Users, RefreshCw, ShieldAlert } from 'lucide-react-native';
+import { Plus, ArrowRight, MapPin, Clock, CircleDot, Bell, Map, Users, RefreshCw, ShieldAlert, Building2 } from 'lucide-react-native';
 import { withCache } from '../../lib/offlineCache';
 
 export default function DashboardScreen() {
@@ -21,8 +21,11 @@ export default function DashboardScreen() {
   const [allProjects, setAllProjects] = useState<Project[]>([]);
   const [stats, setStats] = useState({ total: 0, pending: 0, in_progress: 0, installed: 0, completed: 0 });
   const [unreadCount, setUnreadCount] = useState(0);
+  const [invitations, setInvitations] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+
+  const isAdmin = profile?.role === 'sloan_admin' || profile?.role === 'superadmin';
 
   // Safely extract company status whether it's an object or array (Supabase join quirk)
   const companyData = useMemo(() => {
@@ -70,8 +73,62 @@ export default function DashboardScreen() {
         });
       }
       setUnreadCount(notifRes.count || 0);
+
+      // Fetch pending invitations for current user email
+      if (user?.email) {
+        const { data: invites } = await supabase
+          .from('company_invitations')
+          .select('*, companies(name)')
+          .eq('email', user.email.toLowerCase())
+          .eq('accepted', false)
+          .gt('expires_at', new Date().toISOString());
+        
+        if (invites) setInvitations(invites);
+      }
     } catch (error) {
       console.error('Dashboard fetchData error:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleAcceptInvite = async (invite: any) => {
+    try {
+      setLoading(true);
+      // Determine the user id - use current logged in user
+      const { data: currentUser } = await supabase.auth.getUser();
+      if (!currentUser.user) throw new Error('User not found');
+
+      // 1. Update Profile
+      const { error: profileError } = await supabase
+        .from('profiles')
+        .update({
+          company_id: invite.company_id,
+          role: invite.role,
+        })
+        .eq('id', currentUser.user.id);
+
+      if (profileError) throw profileError;
+
+      // 2. Add to company_members
+      await supabase.from('company_members').upsert({
+        company_id: invite.company_id,
+        user_id: currentUser.user.id,
+        role: invite.role,
+        is_primary: true
+      }, { onConflict: 'company_id,user_id' });
+
+      // 3. Mark Invitation as Accepted
+      await supabase
+        .from('company_invitations')
+        .update({ accepted: true })
+        .eq('id', invite.id);
+
+      await refreshProfile();
+      await fetchData(true);
+      Alert.alert('Success', `You have joined ${invite.companies?.name}`);
+    } catch (error: any) {
+      Alert.alert('Error', error.message || 'Failed to join team');
     } finally {
       setLoading(false);
     }
@@ -109,6 +166,10 @@ export default function DashboardScreen() {
 
   const formatDate = (d: string) =>
     new Date(d).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+
+  if (isAdmin) {
+    return <AdminDashboard profile={profile} user={user} refreshProfile={refreshProfile} unreadCount={unreadCount} />;
+  }
 
   return (
     <SafeAreaView style={styles.container}>
@@ -218,7 +279,36 @@ export default function DashboardScreen() {
             </TouchableOpacity>
           </View>
 
-          {!profile?.company_id ? (
+          {invitations.length > 0 && (
+            <View style={styles.section}>
+              <View style={styles.sectionHeader}>
+                <View style={styles.sectionTitleRow}>
+                  <Users size={18} color={Colors.warning[600]} />
+                  <Text style={styles.sectionTitle}>Team Invitations</Text>
+                </View>
+                <View style={styles.inviteBadge}>
+                  <Text style={styles.inviteBadgeText}>{invitations.length}</Text>
+                </View>
+              </View>
+              {invitations.map(invite => (
+                <View key={invite.id} style={styles.inviteCard}>
+                  <View style={styles.inviteInfo}>
+                    <Text style={styles.inviteText}>
+                      You've been invited to join <Text style={styles.inviteBold}>{invite.companies?.name}</Text> as {invite.role}.
+                    </Text>
+                  </View>
+                  <TouchableOpacity 
+                    style={styles.joinBtn}
+                    onPress={() => handleAcceptInvite(invite)}
+                  >
+                    <Text style={styles.joinBtnText}>Join Team</Text>
+                  </TouchableOpacity>
+                </View>
+              ))}
+            </View>
+          )}
+
+          {!profile?.company_id && invitations.length === 0 ? (
             <View style={styles.emptyCard}>
               <Text style={styles.emptyTitle}>No company yet</Text>
               <Text style={styles.emptyText}>Register or join a company to start managing projects</Text>
@@ -270,6 +360,121 @@ export default function DashboardScreen() {
               </TouchableOpacity>
             ))
           )}
+        </View>
+
+        <View style={{ height: 24 }} />
+      </ScrollView>
+    </SafeAreaView>
+  );
+}
+
+function AdminDashboard({ profile, user, refreshProfile, unreadCount = 0 }: any) {
+  const router = useRouter();
+  const [adminStats, setAdminStats] = useState({ total_companies: 0, pending_companies: 0, total_projects: 0 });
+  const [refreshing, setRefreshing] = useState(false);
+
+  const fetchAdminData = async () => {
+    try {
+      const [{ count: companiesCount }, { count: pendingCount }, { count: projectsCount }] = await Promise.all([
+        supabase.from('companies').select('*', { count: 'exact', head: true }),
+        supabase.from('companies').select('*', { count: 'exact', head: true }).eq('status', 'pending'),
+        supabase.from('projects').select('*', { count: 'exact', head: true }),
+      ]);
+      setAdminStats({
+        total_companies: companiesCount || 0,
+        pending_companies: pendingCount || 0,
+        total_projects: projectsCount || 0,
+      });
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  useFocusEffect(useCallback(() => { fetchAdminData(); }, []));
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await refreshProfile();
+    await fetchAdminData();
+    setRefreshing(false);
+  };
+
+  return (
+    <SafeAreaView style={styles.container}>
+      <ScrollView refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}>
+        <LinearGradient colors={['#4F46E5', '#312E81']} style={styles.header}>
+          <View style={styles.headerTop}>
+            <View style={styles.greetingBlock}>
+              <Text style={styles.greeting}>Administrator Dashboard,</Text>
+              <Text style={styles.userName}>{profile?.full_name || 'Admin'}</Text>
+            </View>
+            <View style={styles.headerActions}>
+              <TouchableOpacity style={styles.notifBtn} onPress={() => router.push('/notifications')}>
+                <Bell size={18} color="#fff" />
+                {unreadCount > 0 && (
+                  <View style={styles.badge}>
+                    <Text style={styles.badgeText}>{unreadCount > 9 ? '9+' : unreadCount}</Text>
+                  </View>
+                )}
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.avatarContainer} onPress={() => router.push('/(tabs)/settings')}>
+                {profile?.avatar_url ? (
+                  <Image source={{ uri: profile.avatar_url }} style={styles.avatarImg} />
+                ) : (
+                  <Text style={styles.avatarText}>{(profile?.full_name || 'A').charAt(0).toUpperCase()}</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          <View style={styles.quickActions}>
+            <TouchableOpacity style={styles.quickBtn} onPress={() => router.push('/map')}>
+              <Map size={16} color="rgba(255,255,255,0.9)" />
+              <Text style={styles.quickBtnText}>Map View</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.quickBtn} onPress={() => router.push('/team')}>
+              <Users size={16} color="rgba(255,255,255,0.9)" />
+              <Text style={styles.quickBtnText}>Team</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={[styles.quickBtn, styles.quickBtnPrimary]} onPress={() => router.push('/project/create')}>
+              <Plus size={16} color="#fff" />
+              <Text style={styles.quickBtnText}>New Project</Text>
+            </TouchableOpacity>
+          </View>
+        </LinearGradient>
+
+        <View style={styles.statsGrid}>
+          <StatCard label="Total Companies" value={adminStats.total_companies} color={Colors.primary[600]} bg={Colors.primary[50]} />
+          <StatCard label="Pending Companies" value={adminStats.pending_companies} color={Colors.error[600]} bg={Colors.error[50]} />
+          <StatCard label="Total Projects" value={adminStats.total_projects} color={Colors.success[600]} bg={Colors.success[50]} />
+          <StatCard label="Platform Users" value={0} color={Colors.accent[500]} bg={Colors.accent[50]} />
+        </View>
+
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Admin Actions</Text>
+          <View style={{ gap: 12, marginTop: 12 }}>
+            <TouchableOpacity style={styles.adminActionCard} onPress={() => router.push('/admin/companies' as any)}>
+              <View style={[styles.iconBox, { backgroundColor: Colors.primary[100] }]}>
+                <Building2 size={24} color={Colors.primary[600]} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.adminActionTitle}>Manage Companies</Text>
+                <Text style={styles.adminActionText}>Approve or reject new company registrations</Text>
+              </View>
+              <ArrowRight size={20} color={Colors.neutral[400]} />
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.adminActionCard} onPress={() => router.push('/admin/companies/create' as any)}>
+              <View style={[styles.iconBox, { backgroundColor: Colors.success[100] }]}>
+                <Plus size={24} color={Colors.success[600]} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.adminActionTitle}>Create Company</Text>
+                <Text style={styles.adminActionText}>Manually add a new company to the system</Text>
+              </View>
+              <ArrowRight size={20} color={Colors.neutral[400]} />
+            </TouchableOpacity>
+          </View>
         </View>
 
         <View style={{ height: 24 }} />
@@ -386,4 +591,51 @@ const styles = StyleSheet.create({
   statusBadge: { flexDirection: 'row', alignItems: 'center', gap: 5, borderRadius: 8, paddingHorizontal: 7, paddingVertical: 4, marginLeft: 8 },
   dot: { width: 6, height: 6, borderRadius: 3 },
   statusText: { fontFamily: 'Inter-SemiBold', fontSize: 10 },
+  iconBox: {
+    width: 48, height: 48, borderRadius: 12,
+    justifyContent: 'center', alignItems: 'center',
+  },
+  adminActionCard: {
+    backgroundColor: '#fff', borderRadius: 14, padding: 16,
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    borderWidth: 1, borderColor: Colors.neutral[100],
+    shadowColor: '#000', shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05, shadowRadius: 3, elevation: 1,
+  },
+  adminActionTitle: { fontFamily: 'Inter-SemiBold', fontSize: 16, color: Colors.neutral[900], marginBottom: 4 },
+  adminActionText: { fontFamily: 'Inter-Regular', fontSize: 13, color: Colors.neutral[500] },
+  inviteCard: {
+    backgroundColor: '#FFFBEB',
+    borderRadius: 16,
+    padding: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#FEF3C7',
+    shadowColor: '#FEF3C7',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  inviteInfo: { flex: 1, marginRight: 12 },
+  inviteText: { fontFamily: 'Inter-Regular', fontSize: 13, color: '#92400E', lineHeight: 18 },
+  inviteBold: { fontFamily: 'Inter-Bold', color: '#78350F' },
+  joinBtn: {
+    backgroundColor: Colors.primary[600],
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 10,
+  },
+  joinBtnText: { fontFamily: 'Inter-SemiBold', fontSize: 13, color: '#fff' },
+  inviteBadge: {
+    backgroundColor: Colors.warning[100],
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 10,
+  },
+  inviteBadgeText: { fontFamily: 'Inter-Bold', fontSize: 11, color: Colors.warning[700] },
+  sectionTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
 });

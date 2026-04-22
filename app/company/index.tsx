@@ -9,6 +9,7 @@ import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
 import { Colors } from '../../constants/Colors';
 import { Company } from '../../types';
+import * as Clipboard from 'expo-clipboard';
 import { ArrowLeft, Building2, MapPin, Phone, Globe, Users, FolderOpen, Copy } from 'lucide-react-native';
 
 export default function CompanyProfileScreen() {
@@ -22,7 +23,9 @@ export default function CompanyProfileScreen() {
   const [address, setAddress] = useState('');
   const [country, setCountry] = useState('');
   const [phone, setPhone] = useState('');
-  const isAdmin = profile?.role === 'admin' || profile?.role === 'superadmin';
+  const [joinId, setJoinId] = useState('');
+  const [joining, setJoining] = useState(false);
+  const isAdmin = profile?.role === 'admin' || profile?.role === 'superadmin' || profile?.role === 'signmaker';
 
   const fetchData = useCallback(async () => {
     if (!profile?.company_id) {
@@ -105,13 +108,65 @@ export default function CompanyProfileScreen() {
     setSaving(false);
   };
 
+  const handleJoinCompany = async () => {
+    if (!joinId.trim()) {
+      Alert.alert('Error', 'Please enter a valid Company ID');
+      return;
+    }
+
+    setJoining(true);
+    try {
+      // 1. Verify Company Exists
+      const { data: comp, error: fetchErr } = await supabase
+        .from('companies')
+        .select('id, name')
+        .eq('id', joinId.trim())
+        .maybeSingle();
+
+      if (fetchErr || !comp) {
+        throw new Error('Company not found. Please check the ID and try again.');
+      }
+
+      // 2. Update Profile
+      const { error: profError } = await supabase
+        .from('profiles')
+        .update({
+          company_id: comp.id,
+          role: 'installer' // Default role for joining via ID
+        })
+        .eq('id', profile?.id);
+
+      if (profError) throw profError;
+
+      // 3. Add to company_members
+      const { error: memberError } = await supabase
+        .from('company_members')
+        .upsert({
+          company_id: comp.id,
+          user_id: profile?.id,
+          role: 'installer',
+          is_primary: true
+        }, { onConflict: 'company_id,user_id' });
+
+      if (memberError) throw memberError;
+
+      Alert.alert('Welcome!', `You have successfully joined ${comp.name}.`);
+      await refreshProfile();
+      fetchData();
+    } catch (err: any) {
+      Alert.alert('Join Failed', err.message);
+    } finally {
+      setJoining(false);
+    }
+  };
+
   const copyCompanyId = async () => {
     if (!profile?.company_id) return;
     try {
-      const { default: Clipboard } = await import('expo-clipboard');
       await Clipboard.setStringAsync(profile.company_id);
-      Alert.alert('Copied', 'Company ID copied to clipboard. Share with team members to invite them.');
-    } catch {
+      Alert.alert('Copied', 'Company ID copied to clipboard. Share with team members to let them join.');
+    } catch (error) {
+      console.error('Copy failed:', error);
       Alert.alert('Company ID', profile.company_id);
     }
   };
@@ -205,10 +260,35 @@ export default function CompanyProfileScreen() {
         </View>
 
         {!profile?.company_id && (
-          <View style={[styles.readOnlyNote, { backgroundColor: Colors.error[50], marginBottom: 16 }]}>
-            <Text style={[styles.readOnlyText, { color: Colors.error[600] }]}>
-              Account Error: No company is linked to your account.
-            </Text>
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Join a Company</Text>
+            <Text style={styles.hintText}>Enter the Company ID provided by your administrator to join the team.</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="Paste Company ID here (e.g. 123e4567-...)"
+              placeholderTextColor={Colors.neutral[400]}
+              value={joinId}
+              onChangeText={setJoinId}
+              autoCapitalize="none"
+              autoCorrect={false}
+            />
+            <TouchableOpacity 
+              style={[styles.joinButton, joining && styles.btnDisabled]} 
+              onPress={handleJoinCompany}
+              disabled={joining}
+            >
+              {joining ? (
+                <ActivityIndicator color="#fff" size="small" />
+              ) : (
+                <Text style={styles.joinButtonText}>Join Company</Text>
+              )}
+            </TouchableOpacity>
+            
+            <View style={[styles.readOnlyNote, { backgroundColor: Colors.error[50], marginTop: 20 }]}>
+              <Text style={[styles.readOnlyText, { color: Colors.error[600] }]}>
+                Account Error: No company is linked to your account.
+              </Text>
+            </View>
           </View>
         )}
 
@@ -323,4 +403,18 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.neutral[100], borderRadius: 10, padding: 12, marginHorizontal: 16,
   },
   readOnlyText: { fontFamily: 'Inter-Regular', fontSize: 12, color: Colors.neutral[500], textAlign: 'center' },
+  hintText: { fontFamily: 'Inter-Regular', fontSize: 13, color: Colors.neutral[500], marginBottom: 12, lineHeight: 18 },
+  joinButton: {
+    backgroundColor: Colors.primary[600],
+    borderRadius: 12,
+    padding: 16,
+    alignItems: 'center',
+    marginTop: 12,
+    shadowColor: Colors.primary[600],
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  joinButtonText: { fontFamily: 'Inter-SemiBold', fontSize: 15, color: '#fff' },
 });

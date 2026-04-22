@@ -16,6 +16,14 @@ export class SupabaseService {
     return this.client;
   }
 
+  getClientWithToken(token: string): SupabaseClient {
+    return createClient(
+      this.configService.get<string>('SUPABASE_URL'),
+      this.configService.get<string>('SUPABASE_ANON_KEY'),
+      { global: { headers: { Authorization: token.startsWith('Bearer ') ? token : `Bearer ${token}` } } }
+    );
+  }
+
   async signIn(email: string, password: string) {
     return this.client.auth.signInWithPassword({ email, password });
   }

@@ -14,7 +14,8 @@
       "infoPlist": {
         "NSLocationWhenInUseUsageDescription": "SloanLED needs access to your location to capture GPS coordinates at installation sites.",
         "NSCameraUsageDescription": "SloanLED needs camera access to take installation photos.",
-        "NSPhotoLibraryUsageDescription": "SloanLED needs access to your photo library to upload installation photos."
+        "NSPhotoLibraryUsageDescription": "SloanLED needs access to your photo library to upload installation photos.",
+        "NSMicrophoneUsageDescription": "SloanLED needs microphone access for the voice assistant feature."
       }
     },
     "android": {
