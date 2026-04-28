@@ -71,6 +71,29 @@ export default function CreateProjectScreen() {
 
   const removePhoto = (uri: string) => setPhotos(prev => prev.filter(p => p !== uri));
 
+  const uploadImage = async (uri: string) => {
+    const fileName = uri.split('/').pop() || 'photo.jpg';
+    const fileExt = fileName.split('.').pop() || 'jpg';
+    const path = `${profile?.id}/${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
+
+    const response = await fetch(uri);
+    const blob = await response.blob();
+    
+    const { error: uploadError } = await supabase.storage
+      .from('project-photos')
+      .upload(path, blob, {
+        contentType: `image/${fileExt === 'png' ? 'png' : 'jpeg'}`,
+      });
+
+    if (uploadError) throw uploadError;
+    
+    const { data: { publicUrl } } = supabase.storage
+      .from('project-photos')
+      .getPublicUrl(path);
+
+    return publicUrl;
+  };
+
   const handleCreate = async () => {
     if (!profile) { setError('User profile not loaded'); return; }
     if (!title.trim()) { setError('Project title is required'); return; }
@@ -94,6 +117,7 @@ export default function CreateProjectScreen() {
         throw new Error('You must be part of a company');
       }
 
+      // 1. Create the project
       const { data: project, error: err } = await supabase
         .from('projects')
         .insert({
@@ -112,17 +136,25 @@ export default function CreateProjectScreen() {
 
       if (err) throw err;
 
+      // 2. Upload photos and save URLs
       if (photos.length > 0 && project) {
         for (const uri of photos) {
-          await supabase.from('project_photos').insert({
-            project_id: project.id,
-            uploaded_by: profile.id,
-            url: uri,
-            caption: '',
-          });
+          try {
+            const publicUrl = await uploadImage(uri);
+            await supabase.from('project_photos').insert({
+              project_id: project.id,
+              uploaded_by: profile.id,
+              url: publicUrl,
+              caption: '',
+            });
+          } catch (uploadErr: any) {
+            console.error('Failed to upload image:', uri, uploadErr);
+            // Continue with other images even if one fails
+          }
         }
       }
 
+      // 3. Add status history
       await supabase.from('project_status_history').insert({
         project_id: project.id,
         changed_by: profile.id,

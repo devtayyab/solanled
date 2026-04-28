@@ -108,6 +108,7 @@ export default function ProjectDetailScreen() {
   };
 
   const handleMarkInstalled = async () => {
+
     setInstalling(true);
     try {
       let lat: number | null = null, lng: number | null = null;
@@ -143,37 +144,66 @@ export default function ProjectDetailScreen() {
       setInstalling(false);
     }
   };
+  
+  const handleMarkCompleted = async () => {
+    setInstalling(true);
+    try {
+      const { error } = await supabase.from('projects').update({
+        status: 'completed',
+        updated_at: new Date().toISOString(),
+      }).eq('id', id);
+
+      if (error) throw error;
+
+      await supabase.from('project_status_history').insert({
+        project_id: id,
+        changed_by: profile?.id,
+        old_status: project?.status,
+        new_status: 'completed',
+        notes: 'Company admin marked project as complete',
+      });
+
+      await fetchProject();
+    } catch (e: any) {
+      Alert.alert(t('error'), e.message);
+    } finally {
+      setInstalling(false);
+    }
+  };
 
   const addPhoto = async () => {
     const result = await ImagePicker.launchCameraAsync({
-      quality: 0.7,
+      quality: 0.5,
       allowsEditing: true,
       aspect: [4, 3],
     });
 
     if (result.canceled || !result.assets[0] || !profile) return;
 
-    setLoading(true); // Re-use loading or create a new 'uploading' state if preferred
+    setLoading(true);
     try {
       const uri = result.assets[0].uri;
-      const fileExt = uri.split('.').pop()?.toLowerCase() || 'jpg';
-      const fileName = `${id}/${profile.id}_${Date.now()}.${fileExt}`;
+      const response = await fetch(uri);
+      const blob = await response.blob();
+      const mime = blob.type || 'image/jpeg';
       
-      // 1. Upload to Storage
-      const { data: uploadData, error: uploadError } = await supabase.storage
+      // Absolute flat path to avoid any folder-related RLS blocks
+      const path = `install-${id}-${Date.now()}.jpeg`;
+      const file = new File([blob], path, { type: mime });
+      
+      const { error: uploadError } = await supabase.storage
         .from('project-photos')
-        .upload(fileName, {
-          uri,
-          type: `image/${fileExt === 'jpg' ? 'jpeg' : fileExt}`,
-          name: fileName,
-        } as any);
+        .upload(path, file, {
+          contentType: mime,
+          upsert: true
+        });
 
       if (uploadError) throw uploadError;
 
       // 2. Get Public URL
       const { data: { publicUrl } } = supabase.storage
         .from('project-photos')
-        .getPublicUrl(fileName);
+        .getPublicUrl(path);
 
       // 3. Save to Database
       const { data, error: dbError } = await supabase.from('project_photos').insert({
@@ -480,6 +510,21 @@ ${(project.project_status_history?.length || 0) > 0 ? `
                   <Text style={styles.installBtnText}>{t('mark_installed')}</Text>
                 </TouchableOpacity>
               )}
+
+              {project.status === 'installed' && (profile?.role === 'admin' || profile?.role === 'superadmin' || profile?.role === 'sloan_admin') && (
+                <TouchableOpacity
+                  style={[styles.installBtn, { backgroundColor: Colors.success[600] }, installing && styles.installBtnDisabled]}
+                  onPress={handleMarkCompleted}
+                  disabled={installing}
+                >
+                  {installing ? (
+                    <ActivityIndicator color="#fff" size="small" />
+                  ) : (
+                    <CheckCircle2 size={18} color="#fff" />
+                  )}
+                  <Text style={styles.installBtnText}>Mark as Complete</Text>
+                </TouchableOpacity>
+              )}
             </View>
           )}
 
@@ -499,7 +544,13 @@ ${(project.project_status_history?.length || 0) > 0 ? `
                 <View style={styles.photoGrid}>
                   {project.project_photos?.map(photo => (
                     <View key={photo.id} style={styles.photoItem}>
-                      <Image source={{ uri: photo.url }} style={styles.photoImg} />
+                      {!photo.url.startsWith('file://') ? (
+                        <Image source={{ uri: photo.url }} style={styles.photoImg} />
+                      ) : (
+                        <View style={[styles.photoImg, { backgroundColor: Colors.neutral[100], justifyContent: 'center', alignItems: 'center' }]}>
+                          <ImageIcon size={24} color={Colors.neutral[300]} />
+                        </View>
+                      )}
                       {profile?.id === photo.uploaded_by && (
                         <TouchableOpacity
                           style={styles.deletePhoto}

@@ -42,13 +42,8 @@ export default function CreateCompanyScreen() {
         
       if (insertError) throw insertError;
 
-      // Assign the superadmin to this company if they don't have one
-      if (profile && !profile.company_id && data) {
-        await supabase
-          .from('profiles')
-          .update({ company_id: data.id })
-          .eq('id', profile.id);
-      }
+      // We don't assign the superadmin to this company because they should remain global
+      // and not be tied to any single company.
 
       Alert.alert('Success', 'Company created successfully');
       router.back();

@@ -50,18 +50,26 @@ export default function MapViewScreen() {
   const [loading, setLoading] = useState(true);
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
 
+  const isGlobalAdmin = profile?.role === 'superadmin' || profile?.role === 'sloan_admin';
+
   useFocusEffect(useCallback(() => {
-    if (!profile?.company_id) { setLoading(false); return; }
-    supabase
+    if (!profile?.company_id && !isGlobalAdmin) { setLoading(false); return; }
+    
+    let query = supabase
       .from('projects')
-      .select('*')
-      .eq('company_id', profile.company_id)
+      .select('*');
+    
+    if (!isGlobalAdmin) {
+      query = query.eq('company_id', profile!.company_id);
+    }
+    
+    query
       .not('gps_lat', 'is', null)
       .then(({ data }) => {
         if (data) setProjects(data as Project[]);
         setLoading(false);
       });
-  }, [profile?.company_id]));
+  }, [profile?.company_id, profile?.role]));
 
   const projectsWithGPS = projects.filter(p => p.gps_lat && p.gps_lng);
 
