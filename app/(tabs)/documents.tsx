@@ -170,24 +170,25 @@ export default function DocumentsScreen() {
         />
       </View>
 
-      <FlatList
-        horizontal
-        data={CATEGORIES}
-        keyExtractor={i => i.key}
-        style={styles.filterList}
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={{ paddingHorizontal: 16, gap: 8, paddingVertical: 4 }}
-        renderItem={({ item }) => (
-          <TouchableOpacity
-            style={[styles.filterChip, activeCategory === item.key && styles.filterChipActive]}
-            onPress={() => setActiveCategory(item.key)}
-          >
-            <Text style={[styles.filterText, activeCategory === item.key && styles.filterTextActive]}>
-              {item.label}
-            </Text>
-          </TouchableOpacity>
-        )}
-      />
+      <View style={styles.filterBar}>
+        <FlatList
+          horizontal
+          data={CATEGORIES}
+          keyExtractor={i => i.key}
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={{ paddingHorizontal: 16, gap: 8, paddingVertical: 4 }}
+          renderItem={({ item }) => (
+            <TouchableOpacity
+              style={[styles.filterChip, activeCategory === item.key && styles.filterChipActive]}
+              onPress={() => setActiveCategory(item.key)}
+            >
+              <Text style={[styles.filterText, activeCategory === item.key && styles.filterTextActive]}>
+                {item.label}
+              </Text>
+            </TouchableOpacity>
+          )}
+        />
+      </View>
 
       <FlatList
         data={filtered}
@@ -240,14 +241,15 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: Colors.neutral[200],
   },
   searchInput: { flex: 1, fontFamily: 'Inter-Regular', fontSize: 14, color: Colors.neutral[900] },
-  filterList: { marginTop: 10, maxHeight: 40 },
+  filterBar: { height: 50, marginTop: 12, marginBottom: 4 },
   filterChip: {
-    borderRadius: 20, paddingHorizontal: 14, paddingVertical: 6,
+    borderRadius: 20, paddingHorizontal: 16, paddingVertical: 8,
     backgroundColor: Colors.neutral[100], borderWidth: 1, borderColor: Colors.neutral[200],
+    justifyContent: 'center', alignItems: 'center',
   },
   filterChipActive: { backgroundColor: Colors.primary[600], borderColor: Colors.primary[600] },
-  filterText: { fontFamily: 'Inter-Medium', fontSize: 12, color: Colors.neutral[600] },
-  filterTextActive: { color: '#fff' },
+  filterText: { fontFamily: 'Inter-Medium', fontSize: 13, color: Colors.neutral[600] },
+  filterTextActive: { color: '#fff', fontFamily: 'Inter-Bold' },
   docCard: {
     backgroundColor: '#fff', borderRadius: 14, flexDirection: 'row',
     padding: 12, borderWidth: 1, borderColor: Colors.neutral[100],
@@ -272,7 +274,7 @@ const styles = StyleSheet.create({
     width: 36, height: 36, borderRadius: 10,
     backgroundColor: Colors.primary[50],
     justifyContent: 'center', alignItems: 'center',
-    marginLeft: 8,
+    marginLeft: 8, flexShrink: 0,
   },
   empty: { alignItems: 'center', paddingVertical: 60, gap: 10 },
   emptyTitle: { fontFamily: 'Inter-SemiBold', fontSize: 16, color: Colors.neutral[700] },

@@ -8,7 +8,7 @@ import { useRouter, useFocusEffect } from 'expo-router';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
 import { Colors } from '../../constants/Colors';
-import { ArrowLeft, Check, X, Building2, Clock, ShieldCheck, ShieldAlert, Plus } from 'lucide-react-native';
+import { ArrowLeft, Check, X, Building2, Clock, ShieldCheck, ShieldAlert, Plus, RefreshCw } from 'lucide-react-native';
 
 interface CompanyApproval {
   id: string;
@@ -19,7 +19,7 @@ interface CompanyApproval {
 }
 
 export default function AdminCompaniesScreen() {
-  const { profile } = useAuth();
+  const { profile, loading: authLoading } = useAuth();
   const router = useRouter();
   const [companies, setCompanies] = useState<CompanyApproval[]>([]);
   const [loading, setLoading] = useState(true);
@@ -28,7 +28,7 @@ export default function AdminCompaniesScreen() {
   const isAdmin = profile?.role === 'sloan_admin' || profile?.role === 'superadmin';
 
   const fetchCompanies = async () => {
-    if (!isAdmin) return;
+    if (authLoading || !isAdmin) return;
     setLoading(true);
     const { data, error } = await supabase
       .from('companies')
@@ -71,6 +71,38 @@ export default function AdminCompaniesScreen() {
       item.status === 'rejected' ? Colors.error[600] :
       Colors.warning[600];
 
+    const toggleActive = async (companyId: string, currentStatus: string) => {
+      const newStatus = currentStatus === 'approved' ? 'rejected' : 'approved';
+      const { error } = await supabase.from('companies').update({ status: newStatus }).eq('id', companyId);
+      if (error) {
+        Alert.alert('Error', error.message);
+      } else {
+        setCompanies(prev => prev.map(c => c.id === companyId ? { ...c, status: newStatus } : c));
+      }
+    };
+
+    const handleDeleteCompany = async (companyId: string, companyName: string) => {
+      Alert.alert(
+        'Delete Company',
+        `Are you sure you want to permanently delete ${companyName}? This will delete all associated projects and members.`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { 
+            text: 'Delete', 
+            style: 'destructive', 
+            onPress: async () => {
+              const { error } = await supabase.from('companies').delete().eq('id', companyId);
+              if (error) {
+                Alert.alert('Error', error.message);
+              } else {
+                setCompanies(prev => prev.filter(c => c.id !== companyId));
+              }
+            }
+          }
+        ]
+      );
+    };
+
     return (
       <View style={styles.card}>
         <View style={styles.cardHeader}>
@@ -80,49 +112,74 @@ export default function AdminCompaniesScreen() {
           <View style={styles.headerInfo}>
             <Text style={styles.companyName}>{item.name}</Text>
             <View style={styles.statusRow}>
-              {item.status === 'pending' ? <Clock size={12} color={statusColor} /> : 
-               item.status === 'approved' ? <ShieldCheck size={12} color={statusColor} /> :
-               <ShieldAlert size={12} color={statusColor} />}
+              {item.status === 'pending' ? (
+                <Clock size={12} color={statusColor} />
+              ) : item.status === 'approved' ? (
+                <ShieldCheck size={12} color={statusColor} />
+              ) : (
+                <ShieldAlert size={12} color={statusColor} />
+              )}
               <Text style={[styles.statusText, { color: statusColor }]}>
-                {item.status.charAt(0).toUpperCase() + item.status.slice(1)}
+                {item.status === 'approved' ? 'Active' : item.status === 'rejected' ? 'Deactivated' : 'Pending'}
               </Text>
             </View>
           </View>
+          {profile?.role === 'superadmin' && (
+            <TouchableOpacity 
+              style={styles.deleteCardBtn}
+              onPress={() => handleDeleteCompany(item.id, item.name)}
+            >
+              <X size={16} color={Colors.error[500]} />
+            </TouchableOpacity>
+          )}
         </View>
 
         <View style={styles.details}>
           <Text style={styles.dateText}>Registered: {new Date(item.created_at).toLocaleDateString()}</Text>
-          {item.phone && <Text style={styles.dateText}>Phone: {item.phone}</Text>}
+          {!!item.phone && <Text style={styles.dateText}>Phone: {item.phone}</Text>}
         </View>
 
-        {item.status === 'pending' && (
-          <View style={styles.actions}>
+        <View style={styles.actions}>
+          {item.status === 'pending' ? (
+            <View style={{flexDirection: 'row', gap: 8}}>
+              <TouchableOpacity 
+                style={[styles.actionBtn, styles.approveBtn]}
+                onPress={() => handleUpdateStatus(item.id, 'approved')}
+              >
+                <Check size={18} color="#fff" />
+                <Text style={styles.btnText}>Approve</Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={[styles.actionBtn, styles.rejectBtn]}
+                onPress={() => handleUpdateStatus(item.id, 'rejected')}
+              >
+                <X size={18} color="#fff" />
+                <Text style={styles.btnText}>Reject</Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
             <TouchableOpacity 
-              style={[styles.actionBtn, styles.approveBtn]}
-              onPress={() => Alert.alert('Approve Company', `Are you sure you want to approve ${item.name}?`, [
-                { text: 'Cancel', style: 'cancel' },
-                { text: 'Approve', onPress: () => handleUpdateStatus(item.id, 'approved') }
-              ])}
+              style={[styles.actionBtn, item.status === 'approved' ? styles.deactivateBtn : styles.approveBtn]}
+              onPress={() => toggleActive(item.id, item.status)}
             >
-              <Check size={18} color="#fff" />
-              <Text style={styles.btnText}>Approve</Text>
+              <RefreshCw size={16} color="#fff" />
+              <Text style={styles.btnText}>
+                {item.status === 'approved' ? 'Deactivate' : 'Activate'}
+              </Text>
             </TouchableOpacity>
-            
-            <TouchableOpacity 
-              style={[styles.actionBtn, styles.rejectBtn]}
-              onPress={() => Alert.alert('Reject Company', `Are you sure you want to reject ${item.name}?`, [
-                { text: 'Cancel', style: 'cancel' },
-                { text: 'Reject', style: 'destructive', onPress: () => handleUpdateStatus(item.id, 'rejected') }
-              ])}
-            >
-              <X size={18} color="#fff" />
-              <Text style={styles.btnText}>Reject</Text>
-            </TouchableOpacity>
-          </View>
-        )}
+          )}
+        </View>
       </View>
     );
   };
+
+  if (authLoading) {
+    return (
+      <View style={styles.center}>
+        <ActivityIndicator size="large" color={Colors.primary[600]} />
+      </View>
+    );
+  }
 
   if (!isAdmin) {
     return (
@@ -135,7 +192,13 @@ export default function AdminCompaniesScreen() {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
+        <TouchableOpacity style={styles.backBtn} onPress={() => {
+          if (router.canGoBack()) {
+            router.back();
+          } else {
+            router.replace('/(tabs)');
+          }
+        }}>
           <ArrowLeft size={20} color={Colors.neutral[700]} />
         </TouchableOpacity>
         <Text style={[styles.title, { flex: 1 }]}>Company Approvals</Text>
@@ -206,8 +269,14 @@ const styles = StyleSheet.create({
   },
   approveBtn: { backgroundColor: Colors.success[600] },
   rejectBtn: { backgroundColor: Colors.error[600] },
+  deactivateBtn: { backgroundColor: Colors.warning[600] },
   btnText: { fontFamily: 'Inter-SemiBold', fontSize: 13, color: '#fff' },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   empty: { padding: 40, alignItems: 'center' },
   emptyText: { color: Colors.neutral[400], fontFamily: 'Inter-Regular' },
+  deleteCardBtn: {
+    padding: 8,
+    borderRadius: 8,
+    backgroundColor: Colors.neutral[50],
+  },
 });

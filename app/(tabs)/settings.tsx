@@ -77,29 +77,37 @@ export default function SettingsScreen() {
 
     setUploadingAvatar(true);
     try {
-      const uri = result.assets[0].uri;
-      const fileName = `avatar_${user?.id}_${Date.now()}.jpg`;
+      const asset = result.assets[0];
+      const uri = asset.uri;
+      const fileExt = uri.split('.').pop() || 'jpg';
+      const fileName = `${user?.id}-${Date.now()}.${fileExt}`;
+
+      // Convert URI to Blob for reliable upload
+      const response = await fetch(uri);
+      const blob = await response.blob();
 
       const { error: uploadError } = await supabase.storage
         .from('avatars')
-        .upload(fileName, { uri, type: 'image/jpeg', name: fileName } as any, { upsert: true });
+        .upload(fileName, blob, {
+          contentType: `image/${fileExt === 'png' ? 'png' : 'jpeg'}`,
+          upsert: true
+        });
 
-      if (uploadError && !uploadError.message.includes('already')) {
-        const { data: urlData } = await supabase.storage.from('avatars').getPublicUrl(fileName);
-        if (urlData?.publicUrl) {
-          await supabase.from('profiles').update({ avatar_url: urlData.publicUrl }).eq('id', user?.id);
-          await refreshProfile();
-        }
-      } else {
-        const { data: urlData } = await supabase.storage.from('avatars').getPublicUrl(fileName);
-        if (urlData?.publicUrl) {
-          await supabase.from('profiles').update({ avatar_url: urlData.publicUrl }).eq('id', user?.id);
-          await refreshProfile();
-        }
+      if (uploadError) throw uploadError;
+
+      const { data: urlData } = supabase.storage.from('avatars').getPublicUrl(fileName);
+      
+      if (urlData?.publicUrl) {
+        const { error: updateError } = await supabase.from('profiles').update({ 
+          avatar_url: urlData.publicUrl 
+        }).eq('id', user?.id);
+        
+        if (updateError) throw updateError;
+        await refreshProfile();
       }
-    } catch {
-      await supabase.from('profiles').update({ avatar_url: result.assets[0].uri }).eq('id', user?.id);
-      await refreshProfile();
+    } catch (err: any) {
+      console.error('Avatar upload failed:', err);
+      Alert.alert(t('error'), 'Failed to upload image. Please try again.');
     } finally {
       setUploadingAvatar(false);
     }
@@ -117,7 +125,7 @@ export default function SettingsScreen() {
       <ScrollView showsVerticalScrollIndicator={false}>
         <View style={styles.avatarSection}>
           <TouchableOpacity style={styles.avatarWrapper} onPress={pickAvatar} disabled={uploadingAvatar}>
-            {profile?.avatar_url ? (
+            {profile?.avatar_url && !profile.avatar_url.startsWith('file://') ? (
               <Image source={{ uri: profile.avatar_url }} style={styles.avatarImg} />
             ) : (
               <View style={styles.avatar}>
@@ -248,8 +256,25 @@ export default function SettingsScreen() {
                 icon={Shield} iconBg={Colors.neutral[100]} iconColor={Colors.neutral[600]}
                 title="Role & Permissions"
                 subtitle={`Your role: ${profile?.role || 'employee'}`}
-                onPress={() => {}}
+                onPress={() => toggleSection('permissions')}
+                expanded={activeSection === 'permissions'}
               />
+              {activeSection === 'permissions' && (
+                <View style={styles.sectionBody}>
+                  <View style={styles.permissionsList}>
+                    {profile?.role === 'superadmin' || profile?.role === 'sloan_admin' ? (
+                      <PermissionItem text="Full platform oversight and management" />
+                    ) : null}
+                    {profile?.role === 'admin' || profile?.role === 'signmaker' ? (
+                      <PermissionItem text="Company team and project management" />
+                    ) : null}
+                    {(profile?.role === 'admin' || profile?.role === 'signmaker' || profile?.role === 'installer') && (
+                      <PermissionItem text="Update project statuses and capture field data" />
+                    )}
+                    <PermissionItem text="View company projects and documentation" />
+                  </View>
+                </View>
+              )}
             </>
           )}
         </View>
@@ -298,6 +323,15 @@ export default function SettingsScreen() {
         </View>
       </Modal>
     </SafeAreaView>
+  );
+}
+
+function PermissionItem({ text }: { text: string }) {
+  return (
+    <View style={styles.permissionItem}>
+      <Check size={14} color={Colors.success[600]} />
+      <Text style={styles.permissionText}>{text}</Text>
+    </View>
   );
 }
 
@@ -459,4 +493,7 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: '#fff',
   },
+  permissionsList: { gap: 10, marginTop: 4 },
+  permissionItem: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  permissionText: { fontFamily: 'Inter-Regular', fontSize: 13, color: Colors.neutral[600] },
 });

@@ -43,21 +43,27 @@ export default function TeamManagementScreen() {
   const [inviteError, setInviteError] = useState('');
   const isAdmin = profile?.role === 'signmaker' || profile?.role === 'sloan_admin' || profile?.role === 'superadmin' || profile?.role === 'admin';
 
+  const isGlobalAdmin = profile?.role === 'superadmin' || profile?.role === 'sloan_admin';
+
   const fetchData = async () => {
-    if (!profile?.company_id) { setLoading(false); return; }
+    if (!profile?.company_id && !isGlobalAdmin) { setLoading(false); return; }
+
+    let membersQuery = supabase
+      .from('company_members')
+      .select('*, profiles:user_id(*)');
+    
+    let invitesQuery = supabase
+      .from('company_invitations')
+      .select('*');
+
+    if (!isGlobalAdmin) {
+      membersQuery = membersQuery.eq('company_id', profile!.company_id);
+      invitesQuery = invitesQuery.eq('company_id', profile!.company_id).eq('accepted', false);
+    }
 
     const [membersRes, invitesRes] = await Promise.all([
-      supabase
-        .from('company_members')
-        .select('*, profiles:user_id(*)')
-        .eq('company_id', profile.company_id)
-        .order('created_at'),
-      supabase
-        .from('company_invitations')
-        .select('*')
-        .eq('company_id', profile.company_id)
-        .eq('accepted', false)
-        .order('created_at', { ascending: false }),
+      membersQuery.order('created_at'),
+      invitesQuery.order('created_at', { ascending: false }),
     ]);
 
     if (membersRes.data) {
@@ -72,7 +78,7 @@ export default function TeamManagementScreen() {
     setLoading(false);
   };
 
-  useFocusEffect(useCallback(() => { fetchData(); }, [profile?.company_id]));
+  useFocusEffect(useCallback(() => { fetchData(); }, [profile?.company_id, profile?.role]));
 
   const handleInvite = async () => {
     if (!inviteEmail.trim()) { setInviteError('Email is required'); return; }
