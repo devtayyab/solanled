@@ -40,6 +40,10 @@ export async function updateSession(request: NextRequest) {
   }
 
   if (user && path === "/login") {
+    // Don't redirect if there's an error — let the error message show
+    if (request.nextUrl.searchParams.has("error")) {
+      return response;
+    }
     const url = request.nextUrl.clone();
     url.pathname = "/";
     url.search = "";

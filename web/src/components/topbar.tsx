@@ -28,6 +28,8 @@ export function Topbar({ profile, contextLabel }: Props) {
     distributor_user: "Distributor user",
     admin: "Company admin",
     employee: "Employee",
+    signmaker: "Signmaker",
+    installer: "Installer",
   };
 
   return (

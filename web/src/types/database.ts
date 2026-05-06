@@ -6,7 +6,9 @@ export type Role =
   | "admin"
   | "employee"
   | "distributor_admin"
-  | "distributor_user";
+  | "distributor_user"
+  | "signmaker"
+  | "installer";
 
 export type ProjectStatus =
   | "pending"
