@@ -15,7 +15,11 @@ export async function getSessionProfile(): Promise<Profile> {
     .eq("id", user.id)
     .single<Profile>();
 
-  if (error || !profile) {
+  if (error) {
+    console.error("[getSessionProfile] profiles query failed:", error);
+    redirect("/login?error=db_error");
+  }
+  if (!profile) {
     redirect("/login?error=no_profile");
   }
 
