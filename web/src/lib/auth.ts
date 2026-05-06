@@ -16,10 +16,15 @@ export async function getSessionProfile(): Promise<Profile> {
     .eq("id", user!.id)
     .single<Profile>();
 
-  console.log("[DEBUG] profile:", JSON.stringify(profile));
-  console.log("[DEBUG] error:", JSON.stringify(error));
+  if (error) {
+    console.error("[getSessionProfile] profiles query failed:", error);
+    // Keep debug log to see exact DB error in terminal
+    console.log("[DEBUG] error:", JSON.stringify(error));
+    redirect("/login?error=db_error");
+  }
 
-  if (error || !profile) {
+  if (!profile) {
+    console.log("[DEBUG] no profile found for user:", user.id);
     redirect("/login?error=no_profile");
   }
 

@@ -1,8 +1,10 @@
 import type { NextConfig } from "next";
 
 const config: NextConfig = {
-  experimental: {
-    typedRoutes: true,
+  typedRoutes: true,
+  // Parent repo has a pnpm-lock.yaml; pin Turbopack root to this folder.
+  turbopack: {
+    root: __dirname,
   },
   images: {
     remotePatterns: [
