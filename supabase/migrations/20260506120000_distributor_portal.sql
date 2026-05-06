@@ -68,7 +68,7 @@ CREATE INDEX IF NOT EXISTS idx_profiles_distributor_id ON profiles(distributor_i
 ALTER TABLE profiles DROP CONSTRAINT IF EXISTS profiles_role_check;
 ALTER TABLE profiles
   ADD CONSTRAINT profiles_role_check
-  CHECK (role IN ('superadmin', 'admin', 'employee', 'distributor_admin', 'distributor_user'));
+  CHECK (role IN ('superadmin', 'admin', 'employee', 'distributor_admin', 'distributor_user', 'signmaker', 'installer'));
 
 -- ============================================================================
 -- 4. document_views
@@ -123,7 +123,7 @@ AS $$
   SELECT distributor_id FROM profiles WHERE id = auth.uid()
 $$;
 
-CREATE OR REPLACE FUNCTION current_role()
+CREATE OR REPLACE FUNCTION get_user_role()
 RETURNS text
 LANGUAGE sql
 STABLE
@@ -147,8 +147,8 @@ CREATE POLICY "distributor_users_view_own"
 CREATE POLICY "superadmin_all_distributors"
   ON distributors FOR ALL
   TO authenticated
-  USING (current_role() = 'superadmin')
-  WITH CHECK (current_role() = 'superadmin');
+  USING (get_user_role() = 'superadmin')
+  WITH CHECK (get_user_role() = 'superadmin');
 
 -- ============================================================================
 -- 8. RLS - companies (additive: distributors read their signmakers)
@@ -159,7 +159,7 @@ CREATE POLICY "distributor_view_assigned_companies"
   ON companies FOR SELECT
   TO authenticated
   USING (
-    current_role() IN ('distributor_admin', 'distributor_user')
+    get_user_role() IN ('distributor_admin', 'distributor_user')
     AND distributor_id = current_distributor_id()
   );
 
@@ -172,7 +172,7 @@ CREATE POLICY "distributor_view_signmaker_profiles"
   ON profiles FOR SELECT
   TO authenticated
   USING (
-    current_role() IN ('distributor_admin', 'distributor_user')
+    get_user_role() IN ('distributor_admin', 'distributor_user')
     AND (
       company_id IN (SELECT id FROM companies WHERE distributor_id = current_distributor_id())
       OR distributor_id = current_distributor_id()
@@ -188,7 +188,7 @@ CREATE POLICY "distributor_view_assigned_projects"
   ON projects FOR SELECT
   TO authenticated
   USING (
-    current_role() IN ('distributor_admin', 'distributor_user')
+    get_user_role() IN ('distributor_admin', 'distributor_user')
     AND company_id IN (SELECT id FROM companies WHERE distributor_id = current_distributor_id())
   );
 
@@ -202,7 +202,7 @@ CREATE POLICY "distributor_view_project_photos"
   ON project_photos FOR SELECT
   TO authenticated
   USING (
-    current_role() IN ('distributor_admin', 'distributor_user')
+    get_user_role() IN ('distributor_admin', 'distributor_user')
     AND project_id IN (
       SELECT p.id FROM projects p
       JOIN companies c ON c.id = p.company_id
@@ -214,7 +214,7 @@ CREATE POLICY "distributor_view_project_status_history"
   ON project_status_history FOR SELECT
   TO authenticated
   USING (
-    current_role() IN ('distributor_admin', 'distributor_user')
+    get_user_role() IN ('distributor_admin', 'distributor_user')
     AND project_id IN (
       SELECT p.id FROM projects p
       JOIN companies c ON c.id = p.company_id
@@ -244,15 +244,15 @@ CREATE POLICY "distributor_view_document_views"
   ON document_views FOR SELECT
   TO authenticated
   USING (
-    current_role() IN ('distributor_admin', 'distributor_user')
+    get_user_role() IN ('distributor_admin', 'distributor_user')
     AND company_id IN (SELECT id FROM companies WHERE distributor_id = current_distributor_id())
   );
 
 CREATE POLICY "superadmin_all_document_views"
   ON document_views FOR ALL
   TO authenticated
-  USING (current_role() = 'superadmin')
-  WITH CHECK (current_role() = 'superadmin');
+  USING (get_user_role() = 'superadmin')
+  WITH CHECK (get_user_role() = 'superadmin');
 
 -- ============================================================================
 -- 13. RLS - ai_request_log
@@ -276,15 +276,15 @@ CREATE POLICY "distributor_view_ai_request_log"
   ON ai_request_log FOR SELECT
   TO authenticated
   USING (
-    current_role() IN ('distributor_admin', 'distributor_user')
+    get_user_role() IN ('distributor_admin', 'distributor_user')
     AND company_id IN (SELECT id FROM companies WHERE distributor_id = current_distributor_id())
   );
 
 CREATE POLICY "superadmin_all_ai_request_log"
   ON ai_request_log FOR ALL
   TO authenticated
-  USING (current_role() = 'superadmin')
-  WITH CHECK (current_role() = 'superadmin');
+  USING (get_user_role() = 'superadmin')
+  WITH CHECK (get_user_role() = 'superadmin');
 
 -- ============================================================================
 -- 14. Updated_at trigger for distributors
