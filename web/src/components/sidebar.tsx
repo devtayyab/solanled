@@ -1,13 +1,15 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
+import { createClient } from "@/lib/supabase/client";
 import {
   LayoutDashboard,
   Building2,
   FolderKanban,
   FileText,
   Users,
+  LogOut,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { Role } from "@/types/database";
@@ -18,7 +20,15 @@ interface Props {
 
 export function Sidebar({ role }: Props) {
   const pathname = usePathname();
+  const router = useRouter();
   const isSuperadmin = role === "superadmin";
+
+  async function signOut() {
+    const supabase = createClient();
+    await supabase.auth.signOut();
+    router.replace("/login");
+    router.refresh();
+  }
 
   const items = [
     { href: "/", label: "Overview", icon: LayoutDashboard },
@@ -56,6 +66,15 @@ export function Sidebar({ role }: Props) {
           );
         })}
       </nav>
+      <div className="p-4 border-t border-gray-100">
+        <button
+          onClick={signOut}
+          className="flex w-full items-center gap-3 px-3 py-2 rounded-md text-sm font-medium text-red-600 hover:bg-red-50 hover:text-red-700 transition"
+        >
+          <LogOut size={18} />
+          Sign out
+        </button>
+      </div>
     </aside>
   );
 }
