@@ -5,6 +5,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Speech from 'expo-speech';
+import Constants from 'expo-constants';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
 import { t } from '../../lib/i18n';
@@ -104,7 +105,15 @@ export default function ChatScreen() {
     try {
       const { data: { session } } = await supabase.auth.getSession();
       
-      const response = await fetch(`${process.env.EXPO_PUBLIC_BACKEND_URL || 'http://localhost:3000'}/api/v1/ai/sessions/${sessionId}/messages`, {
+      let backendUrl = process.env.EXPO_PUBLIC_BACKEND_URL;
+      if (!backendUrl && __DEV__ && Constants.expoConfig?.hostUri) {
+        const hostIp = Constants.expoConfig.hostUri.split(':')[0];
+        backendUrl = `http://${hostIp}:3001`;
+      } else if (!backendUrl) {
+        backendUrl = 'http://localhost:3001';
+      }
+
+      const response = await fetch(`${backendUrl}/api/v1/ai/sessions/${sessionId}/messages`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
