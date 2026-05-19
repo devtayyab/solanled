@@ -3,11 +3,11 @@ frontend:
   phases:
     preBuild:
       commands:
-        - cd $AWS_SRC_DIR/web
+        - if [ -d "web" ]; then cd web; fi
         - npm ci
     build:
       commands:
-        - cd $AWS_SRC_DIR/web
+        - if [ -d "web" ]; then cd web; fi
         - npm run build
   artifacts:
     baseDirectory: web/.next
