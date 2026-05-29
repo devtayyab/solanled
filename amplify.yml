@@ -6,7 +6,7 @@ applications:
         preBuild:
           commands:
             - corepack enable
-            - corepack prepare pnpm@latest --activate
+            - corepack prepare pnpm@9.15.9 --activate
             - pnpm install --frozen-lockfile
         build:
           commands:
