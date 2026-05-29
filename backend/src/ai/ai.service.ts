@@ -37,6 +37,24 @@ export class AiService {
       .from('ai_messages')
       .insert({ session_id: sessionId, role: 'user', content: message });
 
+    // Fetch the user's company_id from their profile to log the request
+    const { data: profileData } = await client
+      .from('profiles')
+      .select('company_id')
+      .eq('id', userId)
+      .maybeSingle();
+
+    // Log the AI request for distributor dashboard metrics
+    await client
+      .from('ai_request_log')
+      .insert({
+        user_id: userId,
+        company_id: profileData?.company_id || null,
+        session_id: sessionId,
+        intent: 'chat_message',
+        prompt_preview: message.substring(0, 50)
+      });
+
     let assistantReply = '';
     const voiceflowKey = this.configService.get<string>('VOICEFLOW_API_KEY');
 
