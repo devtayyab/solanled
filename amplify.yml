@@ -1,19 +1,22 @@
 version: 1
-frontend:
-  phases:
-    preBuild:
-      commands:
-        - cd web
-        - npm ci
-    build:
-      commands:
-        - cd web
-        - npm run build
-  artifacts:
-    baseDirectory: web/.next
-    files:
-      - '**/*'
-  cache:
-    paths:
-      - web/node_modules/**/*
-      - web/.next/cache/**/*
+applications:
+  - appRoot: web
+    frontend:
+      phases:
+        preBuild:
+          commands:
+            - corepack enable
+            - corepack prepare pnpm@latest --activate
+            - pnpm install --frozen-lockfile
+        build:
+          commands:
+            - pnpm run build
+      artifacts:
+        baseDirectory: .next
+        files:
+          - '**/*'
+      cache:
+        paths:
+          - .next/cache/**/*
+          - node_modules/**/*
+          - ~/.local/share/pnpm/store/**/*
