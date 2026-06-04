@@ -10,6 +10,7 @@ import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
+import { clearCacheItem } from '../../lib/offlineCache';
 import { t } from '../../lib/i18n';
 import { Colors } from '../../constants/Colors';
 import { X, MapPin, Camera, Plus, ArrowLeft } from 'lucide-react-native';
@@ -162,6 +163,17 @@ export default function CreateProjectScreen() {
         new_status: 'pending',
         notes: 'Project created',
       });
+
+      // Clear local caches for projects list and dashboard
+      if (targetCompanyId) {
+        await clearCacheItem(`projects_list_${targetCompanyId}`);
+        await clearCacheItem(`dashboard_projects_${targetCompanyId}`);
+      }
+      if (profile?.company_id) {
+        await clearCacheItem(`projects_list_${profile.company_id}`);
+        await clearCacheItem(`dashboard_projects_${profile.company_id}`);
+      }
+      await clearCacheItem('projects_list_global');
 
       router.replace(`/project/${project.id}`);
     } catch (e: any) {
