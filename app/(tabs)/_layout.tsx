@@ -2,7 +2,7 @@ import { useEffect } from 'react';
 import { Tabs, useRouter } from 'expo-router';
 import { useAuth } from '../../context/AuthContext';
 import { Colors } from '../../constants/Colors';
-import { LayoutDashboard, FolderOpen, FileText, MessageCircle, Settings } from 'lucide-react-native';
+import { LayoutDashboard, FolderOpen, FileText, MessageCircle, Settings, PlayCircle } from 'lucide-react-native';
 import { View, ActivityIndicator } from 'react-native';
 
 export default function TabsLayout() {
@@ -72,6 +72,13 @@ export default function TabsLayout() {
         options={{
           title: 'AI Chat',
           tabBarIcon: ({ color, size }) => <MessageCircle size={size - 2} color={color} />,
+        }}
+      />
+      <Tabs.Screen
+        name="videos"
+        options={{
+          title: 'Training',
+          tabBarIcon: ({ color, size }) => <PlayCircle size={size - 2} color={color} />,
         }}
       />
       <Tabs.Screen

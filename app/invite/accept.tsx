@@ -34,6 +34,9 @@ export default function AcceptInviteScreen() {
   const [processing, setProcessing] = useState(false);
   const [error, setError] = useState('');
 
+  const isValidTab = viewState === 'valid';
+  const isRegisterTab = viewState === 'need_register';
+
   useEffect(() => {
     if (!token) { setViewState('invalid'); return; }
     loadInvite();
@@ -233,16 +236,16 @@ export default function AcceptInviteScreen() {
 
               <View style={styles.tabRow}>
                 <TouchableOpacity
-                  style={[styles.tabBtn, viewState === 'valid' && styles.tabBtnActive]}
+                  style={[styles.tabBtn, isValidTab && styles.tabBtnActive]}
                   onPress={() => setViewState('valid')}
                 >
-                  <Text style={[styles.tabBtnText, viewState === 'valid' && styles.tabBtnTextActive]}>Sign In</Text>
+                  <Text style={[styles.tabBtnText, isValidTab && styles.tabBtnTextActive]}>Sign In</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
-                  style={[styles.tabBtn, viewState === 'need_register' && styles.tabBtnActive]}
+                  style={[styles.tabBtn, isRegisterTab && styles.tabBtnActive]}
                   onPress={() => setViewState('need_register')}
                 >
-                  <Text style={[styles.tabBtnText, viewState === 'need_register' && styles.tabBtnTextActive]}>New Account</Text>
+                  <Text style={[styles.tabBtnText, isRegisterTab && styles.tabBtnTextActive]}>New Account</Text>
                 </TouchableOpacity>
               </View>
 
@@ -301,16 +304,16 @@ export default function AcceptInviteScreen() {
 
               <View style={styles.tabRow}>
                 <TouchableOpacity
-                  style={[styles.tabBtn, viewState === 'valid' && styles.tabBtnActive]}
+                  style={[styles.tabBtn, isValidTab && styles.tabBtnActive]}
                   onPress={() => setViewState('valid')}
                 >
-                  <Text style={[styles.tabBtnText, viewState === 'valid' && styles.tabBtnTextActive]}>Sign In</Text>
+                  <Text style={[styles.tabBtnText, isValidTab && styles.tabBtnTextActive]}>Sign In</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
-                  style={[styles.tabBtn, viewState === 'need_register' && styles.tabBtnActive]}
+                  style={[styles.tabBtn, isRegisterTab && styles.tabBtnActive]}
                   onPress={() => setViewState('need_register')}
                 >
-                  <Text style={[styles.tabBtnText, viewState === 'need_register' && styles.tabBtnTextActive]}>New Account</Text>
+                  <Text style={[styles.tabBtnText, isRegisterTab && styles.tabBtnTextActive]}>New Account</Text>
                 </TouchableOpacity>
               </View>
 

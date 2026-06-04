@@ -4,12 +4,13 @@ import {
   StyleSheet, ScrollView, ActivityIndicator, Platform
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
+import * as ImagePicker from 'expo-image-picker';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
 import { Colors } from '../../constants/Colors';
 import {
-  ArrowLeft, FileText, Link, ChevronDown, Check, Tag, Upload
+  ArrowLeft, FileText, Link, ChevronDown, Check, Tag, Upload, Play, FileVideo
 } from 'lucide-react-native';
 
 const CATEGORIES = [
@@ -29,6 +30,7 @@ const LANGUAGES = [
 export default function UploadDocumentScreen() {
   const { profile } = useAuth();
   const router = useRouter();
+  const { mode } = useLocalSearchParams<{ mode?: string }>();
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [fileUrl, setFileUrl] = useState('');
@@ -41,11 +43,47 @@ export default function UploadDocumentScreen() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
+  // Video specific states
+  const [isVideo, setIsVideo] = useState(mode === 'video');
+  const [videoUploadMode, setVideoUploadMode] = useState<'url' | 'file'>('url');
+  const [selectedVideoUri, setSelectedVideoUri] = useState<string | null>(null);
+  const [selectedVideoName, setSelectedVideoName] = useState<string | null>(null);
+
+  const pickVideo = async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      setError('Permission to access media library is required.');
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Videos,
+      allowsEditing: true,
+      quality: 1,
+    });
+
+    if (!result.canceled && result.assets && result.assets[0]) {
+      const videoAsset = result.assets[0];
+      setSelectedVideoUri(videoAsset.uri);
+      setSelectedVideoName(videoAsset.fileName || `video-${Date.now()}.mp4`);
+      setFileUrl(videoAsset.uri); 
+      setError('');
+    }
+  };
+
   const isAdmin = profile?.role === 'admin' || profile?.role === 'superadmin';
 
   const handleSave = async () => {
     if (!title.trim()) { setError('Title is required'); return; }
-    if (!fileUrl.trim()) { setError('File URL is required'); return; }
+    if (isVideo && videoUploadMode === 'file' && !selectedVideoUri) {
+      setError('Please select a video file to upload');
+      return;
+    }
+    if (!isVideo && !fileUrl.trim()) { setError('File URL is required'); return; }
+    if (isVideo && videoUploadMode === 'url' && !fileUrl.trim()) {
+      setError('Video URL is required');
+      return;
+    }
     setSaving(true);
     setError('');
     try {
@@ -54,12 +92,39 @@ export default function UploadDocumentScreen() {
         .map(t => t.trim())
         .filter(Boolean);
 
+      if (isVideo && !tags.includes('video')) {
+        tags.push('video');
+      }
+
+      let finalFileUrl = fileUrl.trim();
+
+      if (isVideo && videoUploadMode === 'file' && selectedVideoUri) {
+        const response = await fetch(selectedVideoUri);
+        const blob = await response.blob();
+        const path = `training-videos/${Date.now()}-${selectedVideoName}`;
+        
+        const { error: uploadError } = await supabase.storage
+          .from('project-photos')
+          .upload(path, blob, {
+            contentType: 'video/mp4',
+            upsert: true
+          });
+
+        if (uploadError) throw uploadError;
+
+        const { data: { publicUrl } } = supabase.storage
+          .from('project-photos')
+          .getPublicUrl(path);
+
+        finalFileUrl = publicUrl;
+      }
+
       const { error: err } = await supabase.from('documents').insert({
         title: title.trim(),
         description: description.trim(),
-        file_url: fileUrl.trim(),
+        file_url: finalFileUrl,
         thumbnail_url: thumbnailUrl.trim() || null,
-        category,
+        category: isVideo ? 'general' : category,
         language,
         tags,
         uploaded_by: profile?.id,
@@ -70,7 +135,7 @@ export default function UploadDocumentScreen() {
       if (router.canGoBack()) {
         router.back();
       } else {
-        router.replace('/(tabs)/documents');
+        router.replace(isVideo ? '/(tabs)/videos' : '/(tabs)/documents');
       }
     } catch (e: any) {
       setError(e.message || 'Failed to upload document');
@@ -87,7 +152,7 @@ export default function UploadDocumentScreen() {
             if (router.canGoBack()) {
               router.back();
             } else {
-              router.replace('/(tabs)/documents');
+              router.replace(mode === 'video' ? '/(tabs)/videos' : '/(tabs)/documents');
             }
           }}>
             <ArrowLeft size={20} color={Colors.neutral[700]} />
@@ -113,7 +178,7 @@ export default function UploadDocumentScreen() {
           if (router.canGoBack()) {
             router.back();
           } else {
-            router.replace('/(tabs)/documents');
+            router.replace(isVideo ? '/(tabs)/videos' : '/(tabs)/documents');
           }
         }}>
           <ArrowLeft size={20} color={Colors.neutral[700]} />
@@ -135,13 +200,31 @@ export default function UploadDocumentScreen() {
         ) : null}
 
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Document Info</Text>
+          <Text style={styles.sectionTitle}>Training Video Option</Text>
+          <TouchableOpacity
+            style={styles.toggleBtn}
+            onPress={() => {
+              setIsVideo(!isVideo);
+              setFileUrl('');
+              setSelectedVideoUri(null);
+              setSelectedVideoName(null);
+            }}
+          >
+            <View style={[styles.toggleSwitch, isVideo && styles.toggleSwitchActive]}>
+              <View style={[styles.toggleCircle, isVideo && styles.toggleCircleActive]} />
+            </View>
+            <Text style={styles.toggleText}>This is a Training Video</Text>
+          </TouchableOpacity>
+        </View>
+
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>{isVideo ? 'Video Info' : 'Document Info'}</Text>
 
           <View style={styles.field}>
             <Text style={styles.label}>Title <Text style={styles.required}>*</Text></Text>
             <TextInput
               style={styles.input}
-              placeholder="e.g. SloanLED SL Series Datasheet"
+              placeholder={isVideo ? "e.g. SloanLED modules installation tutorial" : "e.g. SloanLED SL Series Datasheet"}
               placeholderTextColor={Colors.neutral[400]}
               value={title}
               onChangeText={setTitle}
@@ -152,7 +235,7 @@ export default function UploadDocumentScreen() {
             <Text style={styles.label}>Description</Text>
             <TextInput
               style={[styles.input, styles.inputMulti]}
-              placeholder="Brief description of the document..."
+              placeholder={isVideo ? "Brief description of this training video..." : "Brief description of the document..."}
               placeholderTextColor={Colors.neutral[400]}
               value={description}
               onChangeText={setDescription}
@@ -161,22 +244,79 @@ export default function UploadDocumentScreen() {
             />
           </View>
 
-          <View style={styles.field}>
-            <Text style={styles.label}>File URL <Text style={styles.required}>*</Text></Text>
-            <TextInput
-              style={styles.input}
-              placeholder="https://example.com/document.pdf"
-              placeholderTextColor={Colors.neutral[400]}
-              value={fileUrl}
-              onChangeText={setFileUrl}
-              autoCapitalize="none"
-              keyboardType="url"
-            />
-            <Text style={styles.hint}>Direct URL to the PDF file</Text>
-          </View>
+          {isVideo ? (
+            <View style={styles.field}>
+              <Text style={styles.label}>Video Upload Mode</Text>
+              <View style={styles.tabGroup}>
+                <TouchableOpacity 
+                  style={[styles.tabBtn, videoUploadMode === 'url' && styles.tabBtnActive]} 
+                  onPress={() => { setVideoUploadMode('url'); setFileUrl(''); setSelectedVideoUri(null); }}
+                >
+                  <Text style={[styles.tabBtnText, videoUploadMode === 'url' && styles.tabBtnTextActive]}>Paste Video URL</Text>
+                </TouchableOpacity>
+                <TouchableOpacity 
+                  style={[styles.tabBtn, videoUploadMode === 'file' && styles.tabBtnActive]} 
+                  onPress={() => { setVideoUploadMode('file'); setFileUrl(''); }}
+                >
+                  <Text style={[styles.tabBtnText, videoUploadMode === 'file' && styles.tabBtnTextActive]}>Upload Video File</Text>
+                </TouchableOpacity>
+              </View>
+
+              {videoUploadMode === 'url' ? (
+                <View style={{ marginTop: 10 }}>
+                  <Text style={styles.label}>Video URL <Text style={styles.required}>*</Text></Text>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="https://www.youtube.com/watch?v=..."
+                    placeholderTextColor={Colors.neutral[400]}
+                    value={fileUrl}
+                    onChangeText={setFileUrl}
+                    autoCapitalize="none"
+                    keyboardType="url"
+                  />
+                  <Text style={styles.hint}>YouTube, Vimeo, or direct MP4 link</Text>
+                </View>
+              ) : (
+                <View style={{ marginTop: 10 }}>
+                  {selectedVideoUri ? (
+                    <View style={styles.selectedFileCard}>
+                      <FileVideo size={24} color={Colors.primary[600]} />
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.selectedFileName} numberOfLines={1}>{selectedVideoName}</Text>
+                        <Text style={styles.hint}>Ready to upload</Text>
+                      </View>
+                      <TouchableOpacity style={styles.uploadFileBtn} onPress={pickVideo}>
+                        <Text style={styles.uploadFileBtnText}>Change</Text>
+                      </TouchableOpacity>
+                    </View>
+                  ) : (
+                    <TouchableOpacity style={styles.uploadFileBtnLarge} onPress={pickVideo}>
+                      <Upload size={24} color={Colors.primary[600]} />
+                      <Text style={styles.uploadFileBtnLargeText}>Select Video File</Text>
+                      <Text style={styles.hint}>MP4 format is recommended</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+              )}
+            </View>
+          ) : (
+            <View style={styles.field}>
+              <Text style={styles.label}>File URL <Text style={styles.required}>*</Text></Text>
+              <TextInput
+                style={styles.input}
+                placeholder="https://example.com/document.pdf"
+                placeholderTextColor={Colors.neutral[400]}
+                value={fileUrl}
+                onChangeText={setFileUrl}
+                autoCapitalize="none"
+                keyboardType="url"
+              />
+              <Text style={styles.hint}>Direct URL to the PDF file</Text>
+            </View>
+          )}
 
           <View style={styles.field}>
-            <Text style={styles.label}>Thumbnail URL</Text>
+            <Text style={styles.label}>{isVideo ? 'Cover Image URL (Thumbnail)' : 'Thumbnail URL'}</Text>
             <TextInput
               style={styles.input}
               placeholder="https://example.com/thumb.jpg"
@@ -186,37 +326,39 @@ export default function UploadDocumentScreen() {
               autoCapitalize="none"
               keyboardType="url"
             />
-            <Text style={styles.hint}>Optional preview image URL</Text>
+            <Text style={styles.hint}>{isVideo ? 'Image displayed before video starts' : 'Optional preview image URL'}</Text>
           </View>
         </View>
 
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Classification</Text>
 
-          <View style={styles.field}>
-            <Text style={styles.label}>Category</Text>
-            <TouchableOpacity
-              style={styles.selector}
-              onPress={() => { setShowCategory(!showCategory); setShowLanguage(false); }}
-            >
-              <Text style={styles.selectorText}>{selectedCategory?.label}</Text>
-              <ChevronDown size={16} color={Colors.neutral[500]} />
-            </TouchableOpacity>
-            {showCategory && (
-              <View style={styles.dropdown}>
-                {CATEGORIES.map(cat => (
-                  <TouchableOpacity
-                    key={cat.value}
-                    style={[styles.dropdownItem, category === cat.value && styles.dropdownItemActive]}
-                    onPress={() => { setCategory(cat.value); setShowCategory(false); }}
-                  >
-                    <Text style={[styles.dropdownText, category === cat.value && styles.dropdownTextActive]}>{cat.label}</Text>
-                    {category === cat.value && <Check size={14} color={Colors.primary[600]} />}
-                  </TouchableOpacity>
-                ))}
-              </View>
-            )}
-          </View>
+          {!isVideo && (
+            <View style={styles.field}>
+              <Text style={styles.label}>Category</Text>
+              <TouchableOpacity
+                style={styles.selector}
+                onPress={() => { setShowCategory(!showCategory); setShowLanguage(false); }}
+              >
+                <Text style={styles.selectorText}>{selectedCategory?.label}</Text>
+                <ChevronDown size={16} color={Colors.neutral[500]} />
+              </TouchableOpacity>
+              {showCategory && (
+                <View style={styles.dropdown}>
+                  {CATEGORIES.map(cat => (
+                    <TouchableOpacity
+                      key={cat.value}
+                      style={[styles.dropdownItem, category === cat.value && styles.dropdownItemActive]}
+                      onPress={() => { setCategory(cat.value); setShowCategory(false); }}
+                    >
+                      <Text style={[styles.dropdownText, category === cat.value && styles.dropdownTextActive]}>{cat.label}</Text>
+                      {category === cat.value && <Check size={14} color={Colors.primary[600]} />}
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              )}
+            </View>
+          )}
 
           <View style={styles.field}>
             <Text style={styles.label}>Language</Text>
@@ -268,7 +410,7 @@ export default function UploadDocumentScreen() {
             {saving ? <ActivityIndicator color="#fff" size="small" /> : (
               <>
                 <Upload size={16} color="#fff" />
-                <Text style={styles.saveBtnText}>Upload Document</Text>
+                <Text style={styles.saveBtnText}>{isVideo ? 'Upload Training Video' : 'Upload Document'}</Text>
               </>
             )}
           </TouchableOpacity>
@@ -277,7 +419,7 @@ export default function UploadDocumentScreen() {
             if (router.canGoBack()) {
               router.back();
             } else {
-              router.replace('/(tabs)/documents');
+              router.replace(isVideo ? '/(tabs)/videos' : '/(tabs)/documents');
             }
           }}>
             <Text style={styles.cancelBtnText}>Cancel</Text>
@@ -363,4 +505,112 @@ const styles = StyleSheet.create({
   accessDenied: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 32, gap: 12 },
   accessDeniedTitle: { fontFamily: 'Inter-Bold', fontSize: 18, color: Colors.neutral[700] },
   accessDeniedText: { fontFamily: 'Inter-Regular', fontSize: 14, color: Colors.neutral[500], textAlign: 'center', lineHeight: 20 },
+  toggleBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 4,
+  },
+  toggleSwitch: {
+    width: 50,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: Colors.neutral[200],
+    paddingHorizontal: 2,
+    justifyContent: 'center',
+  },
+  toggleSwitchActive: {
+    backgroundColor: Colors.primary[600],
+  },
+  toggleCircle: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: '#fff',
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    shadowOffset: { width: 0, height: 1 },
+  },
+  toggleCircleActive: {
+    alignSelf: 'flex-end',
+  },
+  toggleText: {
+    fontFamily: 'Inter-Medium',
+    fontSize: 14,
+    color: Colors.neutral[800],
+  },
+  tabGroup: {
+    flexDirection: 'row',
+    backgroundColor: Colors.neutral[100],
+    borderRadius: 10,
+    padding: 3,
+    marginTop: 6,
+  },
+  tabBtn: {
+    flex: 1,
+    paddingVertical: 8,
+    alignItems: 'center',
+    borderRadius: 8,
+  },
+  tabBtnActive: {
+    backgroundColor: '#fff',
+    elevation: 1,
+    shadowColor: '#000',
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+  },
+  tabBtnText: {
+    fontFamily: 'Inter-Medium',
+    fontSize: 13,
+    color: Colors.neutral[500],
+  },
+  tabBtnTextActive: {
+    color: Colors.primary[600],
+    fontFamily: 'Inter-Bold',
+  },
+  uploadFileBtn: {
+    backgroundColor: Colors.primary[50],
+    borderWidth: 1,
+    borderColor: Colors.primary[200],
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  uploadFileBtnText: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 12,
+    color: Colors.primary[600],
+  },
+  uploadFileBtnLarge: {
+    borderWidth: 1.5,
+    borderColor: Colors.primary[200],
+    borderStyle: 'dashed',
+    borderRadius: 12,
+    backgroundColor: Colors.primary[50],
+    padding: 24,
+    alignItems: 'center',
+    gap: 8,
+  },
+  uploadFileBtnLargeText: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 14,
+    color: Colors.primary[600],
+  },
+  selectedFileCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.neutral[50],
+    borderWidth: 1.5,
+    borderColor: Colors.neutral[200],
+    borderRadius: 12,
+    padding: 12,
+    gap: 12,
+  },
+  selectedFileName: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 14,
+    color: Colors.neutral[800],
+  },
 });
