@@ -73,6 +73,20 @@ export interface Document {
   created_at: string;
 }
 
+export interface TrainingVideo {
+  id: string;
+  title: string;
+  description: string;
+  video_url: string;
+  thumbnail_url: string | null;
+  language: string;
+  tags: string[];
+  created_at: string;
+  updated_at: string;
+  uploaded_by?: string | null;
+  company_id?: string | null;
+}
+
 export interface AiMessage {
   id: string;
   session_id: string;

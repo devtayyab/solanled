@@ -10,15 +10,15 @@ import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
 import { t } from '../../lib/i18n';
 import { Colors } from '../../constants/Colors';
-import { Document } from '../../types';
+import { TrainingVideo } from '../../types';
 import { Search, Play, X, Plus, FileVideo } from 'lucide-react-native';
 import { withCache } from '../../lib/offlineCache';
 
 export default function VideosScreen() {
   const { profile } = useAuth();
   const router = useRouter();
-  const [videos, setVideos] = useState<Document[]>([]);
-  const [filtered, setFiltered] = useState<Document[]>([]);
+  const [videos, setVideos] = useState<TrainingVideo[]>([]);
+  const [filtered, setFiltered] = useState<TrainingVideo[]>([]);
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -29,10 +29,10 @@ export default function VideosScreen() {
 
   const loadVideos = async (force = false) => {
     const { data, fromCache: cached } = await withCache(
-      'documents_list',
+      'training_videos_list',
       async () => {
         const { data } = await supabase
-          .from('documents')
+          .from('training_videos')
           .select('*')
           .order('created_at', { ascending: false });
         return data || [];
@@ -40,9 +40,7 @@ export default function VideosScreen() {
       force ? 0 : undefined
     );
 
-    // Filter to show only training videos (containing 'video' tag)
-    const filteredVideos = (data || []).filter(d => d.tags && d.tags.includes('video'));
-    setVideos(filteredVideos);
+    setVideos(data || []);
     setFromCache(cached && !force);
     setLoading(false);
   };
@@ -85,10 +83,10 @@ export default function VideosScreen() {
     }
   };
 
-  const renderVideo = ({ item }: { item: Document }) => (
+  const renderVideo = ({ item }: { item: TrainingVideo }) => (
     <TouchableOpacity
       style={styles.card}
-      onPress={() => playVideo(item.file_url)}
+      onPress={() => playVideo(item.video_url)}
       activeOpacity={0.8}
     >
       <View style={styles.cardLeft}>
@@ -119,7 +117,7 @@ export default function VideosScreen() {
       </View>
       <TouchableOpacity
         style={styles.playBtn}
-        onPress={() => playVideo(item.file_url)}
+        onPress={() => playVideo(item.video_url)}
       >
         <Play size={14} color={Colors.primary[600]} fill={Colors.primary[600]} />
       </TouchableOpacity>

@@ -12,6 +12,7 @@ import { Colors } from '../../constants/Colors';
 import {
   ArrowLeft, FileText, Link, ChevronDown, Check, Tag, Upload, Play, FileVideo
 } from 'lucide-react-native';
+import { clearCacheItem } from '../../lib/offlineCache';
 
 const CATEGORIES = [
   { value: 'datasheet', label: 'Datasheet' },
@@ -167,19 +168,38 @@ export default function UploadDocumentScreen() {
         finalThumbnailUrl = publicUrl;
       }
 
-      const { error: err } = await supabase.from('documents').insert({
-        title: title.trim(),
-        description: description.trim(),
-        file_url: finalFileUrl,
-        thumbnail_url: finalThumbnailUrl,
-        category: isVideo ? 'general' : category,
-        language,
-        tags,
-        uploaded_by: profile?.id,
-        company_id: profile?.company_id,
-      });
+      let err;
+      if (isVideo) {
+        const { error } = await supabase.from('training_videos').insert({
+          title: title.trim(),
+          description: description.trim(),
+          video_url: finalFileUrl,
+          thumbnail_url: finalThumbnailUrl,
+          language,
+          tags,
+          uploaded_by: profile?.id,
+          company_id: profile?.company_id,
+        });
+        err = error;
+      } else {
+        const { error } = await supabase.from('documents').insert({
+          title: title.trim(),
+          description: description.trim(),
+          file_url: finalFileUrl,
+          thumbnail_url: finalThumbnailUrl,
+          category,
+          language,
+          tags,
+          uploaded_by: profile?.id,
+          company_id: profile?.company_id,
+        });
+        err = error;
+      }
 
       if (err) throw err;
+
+      await clearCacheItem(isVideo ? 'training_videos_list' : 'documents_list');
+
       if (router.canGoBack()) {
         router.back();
       } else {
