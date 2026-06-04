@@ -2,7 +2,7 @@ import { useState } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity,
   StyleSheet, ScrollView, KeyboardAvoidingView,
-  Platform, Image, ActivityIndicator
+  Platform, Image, ActivityIndicator, ImageBackground
 } from 'react-native';
 import { useRouter, Link } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -37,13 +37,20 @@ export default function LoginScreen() {
 
   return (
     <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <LinearGradient colors={['#0A1628', '#0F2044', '#162B52']} style={styles.gradient}>
-        <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+      <ImageBackground
+        source={{ uri: 'https://images.unsplash.com/photo-1558223108-61138822455d?auto=format&fit=crop&q=80&w=1000' }}
+        style={styles.bgImage}
+      >
+        <LinearGradient colors={['rgba(15, 32, 68, 0.4)', 'rgba(15, 32, 68, 0.9)', '#0F2044']} style={styles.gradient}>
+          <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
           <View style={styles.logoContainer}>
-            <View style={styles.logoBox}>
-              <Text style={styles.logoText}>S</Text>
+            <View style={styles.logoWrapper}>
+              <Image
+                source={require('../../assets/images/solanlogo.png')}
+                style={styles.logo}
+                resizeMode="contain"
+              />
             </View>
-            <Text style={styles.brandName}>SloanLED</Text>
             <Text style={styles.brandSubtitle}>{t('welcome_subtitle')}</Text>
           </View>
 
@@ -106,31 +113,34 @@ export default function LoginScreen() {
           </View>
         </ScrollView>
       </LinearGradient>
-    </KeyboardAvoidingView>
+    </ImageBackground>
+  </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
+  bgImage: { flex: 1 },
   gradient: { flex: 1 },
   scroll: { flexGrow: 1, justifyContent: 'center', padding: 24 },
   logoContainer: { alignItems: 'center', marginBottom: 40 },
-  logoBox: {
-    width: 72, height: 72, borderRadius: 20,
-    backgroundColor: Colors.primary[500],
-    justifyContent: 'center', alignItems: 'center',
-    marginBottom: 16, shadowColor: Colors.primary[500],
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.4, shadowRadius: 16, elevation: 8,
+  logoWrapper: {
+    width: 260,
+    height: 80,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 12,
   },
-  logoText: { fontFamily: 'Inter-Bold', fontSize: 32, color: '#fff' },
-  brandName: { fontFamily: 'Inter-Bold', fontSize: 28, color: '#fff', letterSpacing: 1 },
-  brandSubtitle: { fontFamily: 'Inter-Regular', fontSize: 14, color: 'rgba(255,255,255,0.6)', marginTop: 4 },
+  logo: {
+    width: '100%',
+    height: '100%',
+  },
+  brandSubtitle: { fontFamily: 'Inter-Regular', fontSize: 14, color: 'rgba(255, 255, 255, 0.7)', marginTop: 4 },
   card: {
-    backgroundColor: '#fff', borderRadius: 24,
-    padding: 28, shadowColor: '#000',
-    shadowOffset: { width: 0, height: 20 },
-    shadowOpacity: 0.3, shadowRadius: 40, elevation: 20,
+    backgroundColor: '#ffffff', borderRadius: 24,
+    padding: 28, shadowColor: '#0A1628',
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.08, shadowRadius: 24, elevation: 6,
   },
   title: { fontFamily: 'Inter-Bold', fontSize: 26, color: Colors.neutral[900], marginBottom: 4 },
   subtitle: { fontFamily: 'Inter-Regular', fontSize: 14, color: Colors.neutral[500], marginBottom: 24 },

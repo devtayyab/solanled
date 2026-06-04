@@ -108,7 +108,7 @@ export default function ProjectsScreen() {
           <ChevronRight size={18} color={Colors.neutral[400]} />
         </View>
 
-        {isGlobalAdmin && (item as any).companies?.name && (
+        {isGlobalAdmin && !!(item as any).companies?.name && (
           <View style={styles.companyRow}>
             <Building2 size={12} color={Colors.primary[500]} />
             <Text style={styles.companyName}>{(item as any).companies.name}</Text>

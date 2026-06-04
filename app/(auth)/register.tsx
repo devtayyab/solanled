@@ -2,7 +2,7 @@ import { useState } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity,
   StyleSheet, ScrollView, KeyboardAvoidingView,
-  Platform, ActivityIndicator
+  Platform, ActivityIndicator, Image, ImageBackground
 } from 'react-native';
 import { useRouter, Link } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -54,13 +54,20 @@ export default function RegisterScreen() {
 
   return (
     <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <LinearGradient colors={['#0A1628', '#0F2044', '#162B52']} style={styles.gradient}>
-        <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+      <ImageBackground
+        source={{ uri: 'https://images.unsplash.com/photo-1558223108-61138822455d?auto=format&fit=crop&q=80&w=1000' }}
+        style={styles.bgImage}
+      >
+        <LinearGradient colors={['rgba(15, 32, 68, 0.4)', 'rgba(15, 32, 68, 0.9)', '#0F2044']} style={styles.gradient}>
+          <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
           <View style={styles.logoContainer}>
-            <View style={styles.logoBox}>
-              <Text style={styles.logoText}>S</Text>
+            <View style={styles.logoWrapper}>
+              <Image
+                source={require('../../assets/images/solanlogo.png')}
+                style={styles.logo}
+                resizeMode="contain"
+              />
             </View>
-            <Text style={styles.brandName}>SloanLED</Text>
           </View>
 
           <View style={styles.card}>
@@ -170,24 +177,28 @@ export default function RegisterScreen() {
           </View>
         </ScrollView>
       </LinearGradient>
-    </KeyboardAvoidingView>
+    </ImageBackground>
+  </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
+  bgImage: { flex: 1 },
   gradient: { flex: 1 },
   scroll: { flexGrow: 1, justifyContent: 'center', padding: 24 },
   logoContainer: { alignItems: 'center', marginBottom: 32 },
-  logoBox: {
-    width: 64, height: 64, borderRadius: 18,
-    backgroundColor: Colors.primary[500],
-    justifyContent: 'center', alignItems: 'center', marginBottom: 12,
-    shadowColor: Colors.primary[500], shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.4, shadowRadius: 16, elevation: 8,
+  logoWrapper: {
+    width: 260,
+    height: 80,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 12,
   },
-  logoText: { fontFamily: 'Inter-Bold', fontSize: 28, color: '#fff' },
-  brandName: { fontFamily: 'Inter-Bold', fontSize: 24, color: '#fff' },
+  logo: {
+    width: '100%',
+    height: '100%',
+  },
   card: {
     backgroundColor: '#fff', borderRadius: 24,
     padding: 28, shadowColor: '#000',

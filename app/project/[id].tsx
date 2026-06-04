@@ -11,6 +11,7 @@ import * as Sharing from 'expo-sharing';
 import * as FileSystem from 'expo-file-system/legacy';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
+import { clearCacheItem } from '../../lib/offlineCache';
 import { t } from '../../lib/i18n';
 import { Colors, StatusColors } from '../../constants/Colors';
 import { Project } from '../../types';
@@ -137,6 +138,16 @@ export default function ProjectDetailScreen() {
         notes: lat ? `GPS captured: ${lat.toFixed(5)}, ${lng?.toFixed(5)}` : 'Marked as installed',
       });
 
+      if (project?.company_id) {
+        await clearCacheItem(`projects_list_${project.company_id}`);
+        await clearCacheItem(`dashboard_projects_${project.company_id}`);
+      }
+      if (profile?.company_id) {
+        await clearCacheItem(`projects_list_${profile.company_id}`);
+        await clearCacheItem(`dashboard_projects_${profile.company_id}`);
+      }
+      await clearCacheItem('projects_list_global');
+
       await fetchProject();
     } catch (e: any) {
       Alert.alert(t('error'), e.message);
@@ -162,6 +173,16 @@ export default function ProjectDetailScreen() {
         new_status: 'completed',
         notes: 'Company admin marked project as complete',
       });
+
+      if (project?.company_id) {
+        await clearCacheItem(`projects_list_${project.company_id}`);
+        await clearCacheItem(`dashboard_projects_${project.company_id}`);
+      }
+      if (profile?.company_id) {
+        await clearCacheItem(`projects_list_${profile.company_id}`);
+        await clearCacheItem(`dashboard_projects_${profile.company_id}`);
+      }
+      await clearCacheItem('projects_list_global');
 
       await fetchProject();
     } catch (e: any) {
@@ -215,6 +236,16 @@ export default function ProjectDetailScreen() {
 
       if (dbError) throw dbError;
 
+      if (project?.company_id) {
+        await clearCacheItem(`projects_list_${project.company_id}`);
+        await clearCacheItem(`dashboard_projects_${project.company_id}`);
+      }
+      if (profile?.company_id) {
+        await clearCacheItem(`projects_list_${profile.company_id}`);
+        await clearCacheItem(`dashboard_projects_${profile.company_id}`);
+      }
+      await clearCacheItem('projects_list_global');
+
       if (data) {
         setProject(prev => prev ? { ...prev, project_photos: [...(prev.project_photos || []), data] } : prev);
       }
@@ -227,6 +258,15 @@ export default function ProjectDetailScreen() {
 
   const deletePhoto = async (photoId: string) => {
     await supabase.from('project_photos').delete().eq('id', photoId);
+    if (project?.company_id) {
+      await clearCacheItem(`projects_list_${project.company_id}`);
+      await clearCacheItem(`dashboard_projects_${project.company_id}`);
+    }
+    if (profile?.company_id) {
+      await clearCacheItem(`projects_list_${profile.company_id}`);
+      await clearCacheItem(`dashboard_projects_${profile.company_id}`);
+    }
+    await clearCacheItem('projects_list_global');
     setProject(prev => prev ? { ...prev, project_photos: prev.project_photos?.filter(p => p.id !== photoId) } : prev);
   };
 

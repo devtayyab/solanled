@@ -1,4 +1,4 @@
-import { View, Text, StyleSheet, TouchableOpacity, ImageBackground, Dimensions } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ImageBackground, Dimensions, Image } from 'react-native';
 import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Colors } from '../../constants/Colors';
@@ -21,10 +21,13 @@ export default function WelcomeScreen() {
         >
           <View style={styles.content}>
             <View style={styles.logoContainer}>
-              <View style={styles.logoBox}>
-                <Text style={styles.logoText}>S</Text>
+              <View style={styles.logoWrapper}>
+                <Image
+                  source={require('../../assets/images/solanlogo.png')}
+                  style={styles.logo}
+                  resizeMode="contain"
+                />
               </View>
-              <Text style={styles.brandName}>SloanLED</Text>
             </View>
 
             <View style={styles.textContainer}>
@@ -66,28 +69,18 @@ const styles = StyleSheet.create({
   gradient: { flex: 1, justifyContent: 'flex-end', padding: 24 },
   content: { width: '100%', paddingBottom: 40 },
   logoContainer: {
-    flexDirection: 'row',
     alignItems: 'center',
     marginBottom: 40,
-    gap: 12,
   },
-  logoBox: {
-    width: 48,
-    height: 48,
-    borderRadius: 12,
-    backgroundColor: Colors.primary[500],
+  logoWrapper: {
+    width: 260,
+    height: 80,
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: Colors.primary[500],
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3, shadowRadius: 8, elevation: 4,
   },
-  logoText: { fontFamily: 'Inter-Bold', fontSize: 24, color: '#fff' },
-  brandName: {
-    fontFamily: 'Inter-Bold',
-    fontSize: 24,
-    color: '#fff',
-    letterSpacing: 1,
+  logo: {
+    width: '100%',
+    height: '100%',
   },
   textContainer: { marginBottom: 48 },
   title: {
