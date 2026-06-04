@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity,
-  StyleSheet, ScrollView, ActivityIndicator, Platform
+  StyleSheet, ScrollView, ActivityIndicator, Platform, Image
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
@@ -34,7 +34,6 @@ export default function UploadDocumentScreen() {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [fileUrl, setFileUrl] = useState('');
-  const [thumbnailUrl, setThumbnailUrl] = useState('');
   const [category, setCategory] = useState('general');
   const [language, setLanguage] = useState('en');
   const [tagsInput, setTagsInput] = useState('');
@@ -48,6 +47,10 @@ export default function UploadDocumentScreen() {
   const [videoUploadMode, setVideoUploadMode] = useState<'url' | 'file'>('url');
   const [selectedVideoUri, setSelectedVideoUri] = useState<string | null>(null);
   const [selectedVideoName, setSelectedVideoName] = useState<string | null>(null);
+
+  // Thumbnail specific states
+  const [selectedThumbUri, setSelectedThumbUri] = useState<string | null>(null);
+  const [selectedThumbName, setSelectedThumbName] = useState<string | null>(null);
 
   const pickVideo = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -67,6 +70,28 @@ export default function UploadDocumentScreen() {
       setSelectedVideoUri(videoAsset.uri);
       setSelectedVideoName(videoAsset.fileName || `video-${Date.now()}.mp4`);
       setFileUrl(videoAsset.uri); 
+      setError('');
+    }
+  };
+
+  const pickThumbnail = async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      setError('Permission to access media library is required.');
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      aspect: [4, 3],
+      quality: 0.8,
+    });
+
+    if (!result.canceled && result.assets && result.assets[0]) {
+      const asset = result.assets[0];
+      setSelectedThumbUri(asset.uri);
+      setSelectedThumbName(asset.fileName || `thumb-${Date.now()}.jpg`);
       setError('');
     }
   };
@@ -119,11 +144,34 @@ export default function UploadDocumentScreen() {
         finalFileUrl = publicUrl;
       }
 
+      let finalThumbnailUrl: string | null = null;
+
+      if (selectedThumbUri) {
+        const response = await fetch(selectedThumbUri);
+        const blob = await response.blob();
+        const path = `document-thumbnails/${Date.now()}-${selectedThumbName}`;
+        
+        const { error: uploadError } = await supabase.storage
+          .from('project-photos')
+          .upload(path, blob, {
+            contentType: blob.type || 'image/jpeg',
+            upsert: true
+          });
+
+        if (uploadError) throw uploadError;
+
+        const { data: { publicUrl } } = supabase.storage
+          .from('project-photos')
+          .getPublicUrl(path);
+
+        finalThumbnailUrl = publicUrl;
+      }
+
       const { error: err } = await supabase.from('documents').insert({
         title: title.trim(),
         description: description.trim(),
         file_url: finalFileUrl,
-        thumbnail_url: thumbnailUrl.trim() || null,
+        thumbnail_url: finalThumbnailUrl,
         category: isVideo ? 'general' : category,
         language,
         tags,
@@ -316,17 +364,30 @@ export default function UploadDocumentScreen() {
           )}
 
           <View style={styles.field}>
-            <Text style={styles.label}>{isVideo ? 'Cover Image URL (Thumbnail)' : 'Thumbnail URL'}</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="https://example.com/thumb.jpg"
-              placeholderTextColor={Colors.neutral[400]}
-              value={thumbnailUrl}
-              onChangeText={setThumbnailUrl}
-              autoCapitalize="none"
-              keyboardType="url"
-            />
-            <Text style={styles.hint}>{isVideo ? 'Image displayed before video starts' : 'Optional preview image URL'}</Text>
+            <Text style={styles.label}>{isVideo ? 'Cover Image (Thumbnail)' : 'Document Thumbnail'}</Text>
+            {selectedThumbUri ? (
+              <View style={styles.selectedFileCard}>
+                <Image source={{ uri: selectedThumbUri }} style={{ width: 48, height: 36, borderRadius: 6 }} />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.selectedFileName} numberOfLines={1}>{selectedThumbName}</Text>
+                  <Text style={styles.hint}>Thumbnail image ready</Text>
+                </View>
+                <View style={{ flexDirection: 'row', gap: 6 }}>
+                  <TouchableOpacity style={styles.uploadFileBtn} onPress={pickThumbnail}>
+                    <Text style={styles.uploadFileBtnText}>Change</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.removeFileBtn} onPress={() => { setSelectedThumbUri(null); setSelectedThumbName(null); }}>
+                    <Text style={styles.removeFileBtnText}>Remove</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            ) : (
+              <TouchableOpacity style={styles.uploadFileBtnLarge} onPress={pickThumbnail}>
+                <Upload size={24} color={Colors.primary[600]} />
+                <Text style={styles.uploadFileBtnLargeText}>{isVideo ? 'Select Cover Image' : 'Select Thumbnail'}</Text>
+                <Text style={styles.hint}>PNG, JPG, or JPEG format</Text>
+              </TouchableOpacity>
+            )}
           </View>
         </View>
 
@@ -612,5 +673,18 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter-SemiBold',
     fontSize: 14,
     color: Colors.neutral[800],
+  },
+  removeFileBtn: {
+    backgroundColor: Colors.error[50],
+    borderWidth: 1,
+    borderColor: Colors.error[100],
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  removeFileBtnText: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 12,
+    color: Colors.error[600],
   },
 });
